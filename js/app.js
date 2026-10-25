@@ -264,6 +264,9 @@ async function vistaOggi() {
         <div class="azioni"><button class="btn" data-fatto="${cena.id}" data-valore="${!cena.fatto}">${cena.fatto ? 'Cena fatta, annulla' : 'Fatto, cena finita'}</button>
         <a class="btn vuoto" href="#/chiedi?q=${encodeURIComponent(`Stasera c'è "${cena.testo}": con cosa posso sostituire qualcosa?`)}">Chiedi una sostituzione</a></div>
       </section>`
+    : cenaDomani ? `<section class="stasera"><p class="quando">Domani sera a cena</p><p class="piatto-grande">${esc(cenaDomani.testo.split(/,\s*poi\s+|;\s*/i)[0])}</p>
+        <p class="resto">Oggi non c'è niente in programma: il menu riparte domani.</p>
+        <div class="azioni"><a class="btn" href="#/settimana">Apri la settimana</a></div></section>`
     : `<section class="stasera"><p class="quando">Stasera a cena</p><p class="piatto-grande">Il menu di oggi è ancora vuoto</p>
         <div class="azioni"><a class="btn" href="#/settimana">Prepara la settimana</a></div></section>`}
     ${mancaOggi.length ? `<div class="blocco zucca" style="margin-top:14px"><b>Per oggi manca ancora:</b> ${mancaOggi.map((m) => esc(m.nome)).join(', ')}. <a href="#/spesa">Apri la spesa</a></div>` : ''}
@@ -351,7 +354,8 @@ async function modificaPasto(p) {
 
 // ---------------------------------------------------------------- SETTIMANA
 async function vistaSettimana() {
-  if (!S.lunedi) S.lunedi = lunediDi(oggi());
+  // la domenica il menu che conta è quello della settimana che parte domani
+  if (!S.lunedi) S.lunedi = daYmd(oggi()).getDay() === 0 ? piuGiorni(oggi(), 1) : lunediDi(oggi());
   const lun = S.lunedi, dom = piuGiorni(lun, 6);
   const { data: pasti, error } = await sb.from('tav_pasti').select('*').gte('giorno', lun).lte('giorno', dom);
   if (error) return errore(error);
