@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="240" height="240" role="img" aria-label="Marco Luoni">
+  <g fill="none" stroke="#eef1f6" stroke-width="7" stroke-linecap="round">
+    <circle cx="60" cy="60" r="46"/>
+    <path d="M34 22.05V97.95M86 22.05V97.95M34 60H86M34 22.05L86 97.95M86 22.05L60 60"/>
+  </g>
+  <circle cx="60" cy="60" r="10" fill="#ffb547"/>
+</svg>
