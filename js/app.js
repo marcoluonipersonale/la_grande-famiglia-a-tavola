@@ -302,8 +302,18 @@ function collegaTabella(ridisegna) {
   });
   app.querySelectorAll('[data-aggiungi]').forEach((b) => b.onclick = async () => { if (await modificaPasto({ giorno: b.dataset.aggiungi, momento: 'cena', testo: '' })) ridisegna(); });
 }
+const rigaIngrediente = (i) => [i.nome, i.quantita].filter(Boolean).join(' ');
+function leggiIngredienti(testo) {
+  return testo.split('\n').map((r) => r.trim()).filter(Boolean).map((r, k) => {
+    const m = r.match(/^(.*?)[\s,:–-]+((?:\d|½|¼|¾|mezz|un |una |q\.b).*)$/i);
+    return m && m[1].trim() ? { nome: m[1].trim(), quantita: m[2].trim(), ordine: k + 1 } : { nome: r, quantita: null, ordine: k + 1 };
+  });
+}
+
 async function modificaPasto(p) {
   const nuovo = !p.id;
+  let ingredienti = [];
+  if (!nuovo) ({ data: ingredienti } = await sb.from('tav_ingredienti').select('*').eq('pasto_id', p.id).order('ordine'));
   const r = await finestra(`
     <h2>${nuovo ? 'Aggiungi un pasto' : `${NOME_MOMENTO[p.momento]} di ${dataMedia(p.giorno)}`}</h2>
     <div class="riga-campi">
@@ -311,6 +321,7 @@ async function modificaPasto(p) {
       <label class="campo">Momento<select name="momento">${MOMENTI.map(([k, t]) => `<option value="${k}"${k === p.momento ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
     </div>
     <label class="campo">Cosa si mangia<textarea name="testo" required maxlength="400">${esc(p.testo)}</textarea></label>
+    <label class="campo">Ingredienti <small>uno per riga, con la quantità per tutti, per esempio "zucca 500 g"</small><textarea name="ingredienti" rows="5" maxlength="1500">${esc((ingredienti || []).map(rigaIngrediente).join('\n'))}</textarea></label>
     <label class="campo">Nota <small>facoltativa: porzioni, chi lo prepara, cosa scongelare</small><input type="text" name="note" value="${esc(p.note || '')}" maxlength="200"></label>
     <div class="azioni">${nuovo ? '' : '<button class="btn elimina" value="elimina" formnovalidate>Elimina</button>'}
       <button class="btn secondario" value="annulla" formnovalidate>Annulla</button><button class="btn" value="salva">Salva</button></div>`);
@@ -321,10 +332,17 @@ async function modificaPasto(p) {
     avviso('Pasto eliminato'); return true;
   }
   const dati = { giorno: r.giorno, momento: r.momento, testo: r.testo.trim(), note: r.note.trim() || null };
-  const { error } = nuovo
-    ? await sb.from('tav_pasti').insert({ ...dati, famiglia_id: S.me.famiglia_id, created_by: S.me.user_id })
+  const res = nuovo
+    ? await sb.from('tav_pasti').insert({ ...dati, famiglia_id: S.me.famiglia_id, created_by: S.me.user_id }).select().single()
     : await sb.from('tav_pasti').update(dati).eq('id', p.id);
-  if (error) { errore(error); return false; }
+  if (res.error) { errore(res.error); return false; }
+  const pastoId = nuovo ? res.data.id : p.id;
+  const prima = (ingredienti || []).map(rigaIngrediente).join('\n');
+  if (r.ingredienti.trim() !== prima.trim()) {
+    if (!nuovo) await sb.from('tav_ingredienti').delete().eq('pasto_id', pastoId);
+    const nuovi = leggiIngredienti(r.ingredienti).map((i) => ({ ...i, pasto_id: pastoId, famiglia_id: S.me.famiglia_id }));
+    if (nuovi.length) { const { error } = await sb.from('tav_ingredienti').insert(nuovi); if (error) { errore(error); return false; } }
+  }
   avviso(nuovo ? 'Pasto aggiunto' : 'Pasto salvato');
   return true;
 }
@@ -366,11 +384,16 @@ async function vistaSettimana() {
   };
   const bc = document.getElementById('copia');
   if (bc) bc.onclick = async () => {
-    const { data: prima } = await sb.from('tav_pasti').select('giorno, momento, testo, note').gte('giorno', piuGiorni(lun, -7)).lte('giorno', piuGiorni(lun, -1));
+    const { data: prima } = await sb.from('tav_pasti').select('id, giorno, momento, testo, note').gte('giorno', piuGiorni(lun, -7)).lte('giorno', piuGiorni(lun, -1));
     if (!prima?.length) { avviso('Anche la settimana precedente è vuota'); return; }
-    const righe = prima.map((p) => ({ ...p, giorno: piuGiorni(p.giorno, 7), famiglia_id: S.me.famiglia_id, created_by: S.me.user_id }));
-    const { error: e } = await sb.from('tav_pasti').insert(righe);
+    const righe = prima.map(({ id, ...p }) => ({ ...p, giorno: piuGiorni(p.giorno, 7), famiglia_id: S.me.famiglia_id, created_by: S.me.user_id }));
+    const { data: nuovi, error: e } = await sb.from('tav_pasti').insert(righe).select();
     if (e) return errore(e);
+    // anche gli ingredienti, pasto per pasto
+    const { data: ingr } = await sb.from('tav_ingredienti').select('pasto_id, nome, quantita, ordine').in('pasto_id', prima.map((p) => p.id));
+    const mappa = new Map(prima.map((p, k) => [p.id, nuovi?.[k]?.id]));
+    const copia = (ingr || []).filter((i) => mappa.get(i.pasto_id)).map((i) => ({ ...i, pasto_id: mappa.get(i.pasto_id), famiglia_id: S.me.famiglia_id }));
+    if (copia.length) await sb.from('tav_ingredienti').insert(copia);
     avviso('Settimana copiata'); vistaSettimana();
   };
   collegaTabella(vistaSettimana);
@@ -382,37 +405,30 @@ async function vistaSettimana() {
 function giorniSpesa() { return [...Array(7)].map((_, i) => piuGiorni(oggi(), i)); }
 
 async function vistaSpesa() {
-  const { data: cose, error } = await sb.from('tav_spesa').select('*').order('nome');
-  if (error) return errore(error);
   const giorni = giorniSpesa();
   const scelti = S.giorniSpesa || (S.giorniSpesa = new Set());
+  for (const g of [...scelti]) if (!giorni.includes(g)) scelti.delete(g);
+  const { data: cose, error } = await sb.from('tav_spesa').select('*').order('nome');
+  if (error) return errore(error);
   const daComprare = (cose || []).filter((c) => c.stato === 'da_comprare');
-  const passa = (c) => {
-    if (!scelti.size) return true;
-    if (!c.serve_il) return scelti.has('senza');
-    // "serve per un giorno già passato" vale come oggi
-    const g = c.serve_il < giorni[0] ? giorni[0] : c.serve_il;
-    return scelti.has(g);
-  };
-  const lista = daComprare.filter(passa);
-  const presiOra = (cose || []).filter((c) => c.stato !== 'da_comprare' && S.spuntatiOra?.has(c.id) && passa(c));
-  const conta = (g) => daComprare.filter((c) => (g === 'senza' ? !c.serve_il : (c.serve_il && (c.serve_il < giorni[0] ? giorni[0] : c.serve_il) === g))).length;
-  const chip = (val, testo, n) => `<button class="giorno-chip" data-giorno="${val}" aria-pressed="${scelti.has(val)}">${testo}${n ? `<small>${n}</small>` : ''}</button>`;
-  const perReparto = REPARTI.map((r) => [r, lista.filter((c) => c.reparto === r)]).filter(([, l]) => l.length);
-  const inCasa = (cose || []).filter((c) => c.stato !== 'da_comprare' && !S.spuntatiOra?.has(c.id));
+  const chip = (val, testo, attivo) => `<button class="giorno-chip${val === 'lista' ? ' lista' : ''}" data-giorno="${val}" aria-pressed="${attivo}">${testo}</button>`;
+  const testa = `
+    ${testata('La spesa', scelti.size ? 'Cosa serve nei giorni scelti' : (daComprare.length ? `${nCose(daComprare.length)} da comprare` : 'Niente da comprare'))}
+    <div class="giorni-spesa" role="group" aria-label="Cosa vuoi vedere">
+      ${chip('lista', `Lista della spesa${daComprare.length ? ` <small>${daComprare.length}</small>` : ''}`, !scelti.size)}
+      ${giorni.map((g, i) => chip(g, i === 0 ? 'Oggi' : i === 1 ? 'Domani' : maiuscola(dataBreve(g)), scelti.has(g))).join('')}
+    </div>`;
+  if (scelti.size) return vistaSpesaGiorni(testa, [...scelti].sort(), cose || []);
 
-  pagina('spesa', `
-    ${testata('La spesa', lista.length ? `${nCose(lista.length)} da comprare` : 'Niente da comprare')}
-    <p class="tenue piccolo" style="margin:0 0 8px">Per quali giorni fai la spesa? Toccane uno o più.</p>
-    <div class="giorni-spesa" role="group" aria-label="Giorni">
-      ${chip('tutto', 'Tutto', 0).replace(`aria-pressed="false"`, `aria-pressed="${!scelti.size}"`)}
-      ${giorni.map((g, i) => chip(g, i === 0 ? 'Oggi' : i === 1 ? 'Domani' : maiuscola(dataBreve(g)), conta(g))).join('')}
-      ${chip('senza', 'Senza giorno', conta('senza'))}
-    </div>
-    ${lista.length || presiOra.length ? `<ul class="lista-spesa grande">
+  const inCasa = (cose || []).filter((c) => c.stato !== 'da_comprare' && !S.spuntatiOra?.has(c.id));
+  const presiOra = (cose || []).filter((c) => c.stato !== 'da_comprare' && S.spuntatiOra?.has(c.id));
+  const perReparto = REPARTI.map((r) => [r, daComprare.filter((c) => c.reparto === r)]).filter(([, l]) => l.length);
+  pagina('spesa', `${testa}
+    <p class="aiuto">Spunta quello che metti nel carrello. Per sapere cosa manca per un giorno, tocca il giorno qui sopra.</p>
+    ${daComprare.length || presiOra.length ? `<ul class="lista-spesa grande">
       ${perReparto.map(([r, l]) => `<li class="reparto-riga">${r}</li>${l.map(rigaCosa).join('')}`).join('')}
       ${presiOra.map(rigaCosa).join('')}
-    </ul>` : `<div class="blocco vuoto-stato"><h3>Niente da comprare${scelti.size ? ' per questi giorni' : ''}</h3><p>Aggiungi qui sotto quello che manca.</p></div>`}
+    </ul>` : `<div class="blocco vuoto-stato"><h3>Niente da comprare</h3><p>Tocca un giorno qui sopra per controllare cosa serve, oppure aggiungi qui sotto quello che manca.</p></div>`}
     <form class="blocco" id="f-agg" style="margin-top:16px">
       <h3>Aggiungi alla lista</h3>
       <div class="aggiungi"><input type="text" name="nome" placeholder="Cosa, per esempio latte di soia" aria-label="Cosa comprare" required maxlength="80"><input type="text" name="quantita" placeholder="Quanto" aria-label="Quantità" maxlength="30"></div>
@@ -423,13 +439,7 @@ async function vistaSpesa() {
       <p class="tenue piccolo">Se una cosa è finita, toccala per rimetterla nella lista.</p>
       <div class="azioni">${inCasa.sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => `<button class="pillola" data-rimetti="${c.id}">${esc(c.nome)}</button>`).join('')}</div></details>` : ''}
     ${FIRMA}`);
-
-  app.querySelectorAll('[data-giorno]').forEach((b) => b.onclick = () => {
-    const v = b.dataset.giorno;
-    if (v === 'tutto') scelti.clear(); else if (scelti.has(v)) scelti.delete(v); else scelti.add(v);
-    S.spuntatiOra = new Set();
-    vistaSpesa();
-  });
+  collegaChip();
   app.querySelectorAll('[data-preso]').forEach((c) => c.onchange = async () => {
     const li = c.closest('li'); li.classList.toggle('preso', c.checked);
     (S.spuntatiOra ||= new Set()).add(c.dataset.preso);
@@ -456,6 +466,72 @@ async function vistaSpesa() {
     if (er) return errore(er);
     avviso(`${nome} in lista`); vistaSpesa();
   };
+}
+
+function collegaChip() {
+  app.querySelectorAll('[data-giorno]').forEach((b) => b.onclick = () => {
+    const v = b.dataset.giorno, scelti = S.giorniSpesa;
+    if (v === 'lista') scelti.clear(); else if (scelti.has(v)) scelti.delete(v); else scelti.add(v);
+    S.spuntatiOra = new Set();
+    vistaSpesa();
+  });
+}
+
+// Giorni scelti: gli ingredienti dei pasti di quei giorni. "Manca" li manda nella lista della spesa.
+async function vistaSpesaGiorni(testa, scelti, cose) {
+  const { data: pasti } = await sb.from('tav_pasti').select('id, giorno, momento, testo').in('giorno', scelti);
+  const ids = (pasti || []).map((p) => p.id);
+  const { data: ingr } = ids.length ? await sb.from('tav_ingredienti').select('*').in('pasto_id', ids).order('ordine') : { data: [] };
+  const legato = new Map((cose || []).filter((c) => c.ingrediente_id).map((c) => [c.ingrediente_id, c]));
+  const stato = (i) => { const c = legato.get(i.id); return !c ? 'casa' : c.stato === 'da_comprare' ? 'lista' : 'preso'; };
+  const bottone = (i) => {
+    const st = stato(i);
+    if (st === 'preso') return `<span class="stato-ingr preso">Comprato</span>`;
+    return `<button class="manca${st === 'lista' ? ' attivo' : ''}" data-ingr="${i.id}" aria-pressed="${st === 'lista'}">${st === 'lista' ? 'In lista' : 'Manca'}</button>`;
+  };
+  const daComprareQui = (ingr || []).filter((i) => stato(i) === 'lista').length;
+  const blocchi = scelti.map((g) => {
+    const delGiorno = (pasti || []).filter((p) => p.giorno === g).sort((a, b) => ORDINE_MOMENTO[a.momento] - ORDINE_MOMENTO[b.momento]);
+    if (!delGiorno.length) return `<section class="giorno"><div class="giorno-testa"><h3>${maiuscola(dataMedia(g))}</h3></div><p class="tenue">Il menu di questo giorno è vuoto.</p></section>`;
+    return `<section class="giorno"><div class="giorno-testa${g === oggi() ? ' oggi' : ''}"><h3>${maiuscola(dataMedia(g))}</h3></div>
+      <ul class="lista-spesa ingredienti">${delGiorno.map((p) => {
+        const suoi = (ingr || []).filter((i) => i.pasto_id === p.id);
+        return `<li class="reparto-riga"><span>${NOME_MOMENTO[p.momento]}</span><small>${esc(p.testo)}</small></li>${suoi.length
+          ? suoi.map((i) => `<li><span class="nome"><b>${esc(i.nome)}</b>${i.quantita ? `<small>${esc(i.quantita)}</small>` : ''}</span>${bottone(i)}</li>`).join('')
+          : `<li class="tenue piccolo"><span>Nessun ingrediente scritto. <button class="link-btn" data-pasto="${p.id}">Aggiungili</button></span></li>`}`;
+      }).join('')}</ul></section>`;
+  }).join('');
+  pagina('spesa', `${testa}
+    <p class="aiuto">Ecco cosa serve per ${scelti.length === 1 ? 'questo giorno' : 'questi giorni'}. Se una cosa non ce l'hai, tocca <b>Manca</b>: finisce nella lista della spesa.</p>
+    ${blocchi}
+    <p class="azioni" style="justify-content:center;margin-top:8px"><button class="btn" data-giorno="lista">Vai alla lista della spesa${daComprareQui ? ` (${daComprareQui} da qui)` : ''}</button></p>
+    ${FIRMA}`);
+  collegaChip();
+  app.querySelectorAll('[data-ingr]').forEach((b) => b.onclick = async () => {
+    const i = (ingr || []).find((x) => x.id === b.dataset.ingr);
+    const c = legato.get(i.id);
+    const p = (pasti || []).find((x) => x.id === i.pasto_id);
+    b.disabled = true;
+    if (c && c.stato === 'da_comprare') {
+      const { error } = await sb.from('tav_spesa').delete().eq('id', c.id);
+      if (error) { b.disabled = false; return errore(error); }
+      legato.delete(i.id);
+      b.classList.remove('attivo'); b.textContent = 'Manca'; b.setAttribute('aria-pressed', 'false');
+    } else {
+      const { data, error } = await sb.from('tav_spesa').insert({ famiglia_id: S.me.famiglia_id, created_by: S.me.user_id, nome: i.nome, quantita: i.quantita, reparto: indovinaReparto(i.nome), serve_il: p.giorno, ingrediente_id: i.id }).select().single();
+      if (error) { b.disabled = false; return errore(error); }
+      legato.set(i.id, data);
+      b.classList.add('attivo'); b.textContent = 'In lista'; b.setAttribute('aria-pressed', 'true');
+    }
+    b.disabled = false;
+    const n = app.querySelectorAll('.manca.attivo').length;
+    const vai = app.querySelector('.azioni [data-giorno="lista"]');
+    if (vai) vai.textContent = `Vai alla lista della spesa${n ? ` (${n} da qui)` : ''}`;
+  });
+  app.querySelectorAll('[data-pasto]').forEach((b) => b.onclick = async () => {
+    const { data: p } = await sb.from('tav_pasti').select('*').eq('id', b.dataset.pasto).single();
+    if (await modificaPasto(p)) vistaSpesa();
+  });
 }
 
 function rigaCosa(c) {
@@ -777,11 +853,10 @@ function vistaGuida() {
         <li>Settimana vuota? "Carica la settimana tipo" mette il menu del piano, "Copia la settimana precedente" ripete l'ultima.</li>
       </ul>
       <h2>Spesa</h2>
-      <div class="passo"><b class="n">1</b><p>La lista mostra solo quello che c'è da comprare, diviso per reparto come i corridoi del supermercato.</p></div>
-      <div class="passo"><b class="n">2</b><p>In alto scegli per quali giorni fai la spesa, anche più di uno (per esempio Domani e Mar 27): la lista mostra solo quello che serve in quei giorni. "Tutto" mostra l'intera lista.</p></div>
-      <div class="passo"><b class="n">3</b><p>Al supermercato spunta quello che metti nel carrello. Se hai spuntato per sbaglio, togli la spunta.</p></div>
-      <div class="passo"><b class="n">4</b><p>Quello che hai comprato finisce in "Già comprato", in fondo. Quando una cosa finisce, toccala lì e torna nella lista.</p></div>
-      <div class="passo"><b class="n">5</b><p>Per aggiungere qualcosa scrivi cosa, quanto e per quale giorno serve. Toccando una cosa della lista la puoi cambiare o togliere.</p></div>
+      <div class="passo"><b class="n">1</b><p><b>Lista della spesa</b>: quello che c'è da comprare, diviso per reparto. Al supermercato spunta quello che metti nel carrello.</p></div>
+      <div class="passo"><b class="n">2</b><p><b>Un giorno</b> (Oggi, Domani, Mar 27…): vedi gli ingredienti dei pasti di quel giorno. Se una cosa non ce l'hai, tocca <b>Manca</b> e finisce nella lista. Puoi scegliere più giorni insieme.</p></div>
+      <div class="passo"><b class="n">3</b><p>In fondo alla lista, "Già comprato" tiene quello che hai in casa: quando una cosa finisce, toccala e torna in lista.</p></div>
+      <div class="passo"><b class="n">4</b><p>Gli ingredienti di un pasto si cambiano dal menu: tocca il piatto e scrivili uno per riga, con la quantità.</p></div>
       <h2>Promemoria sul telefono</h2>
       <p>In "Io" tocca "Aggiungi al calendario" e conferma l'iscrizione. Il calendario del telefono ti avvisa da solo:</p>
       <ul><li>alle 7:00 con il menu di oggi;</li><li>alle 20:30 con il menu di domani e le cose che mancano da comprare.</li></ul>

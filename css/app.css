@@ -245,3 +245,12 @@ dialog .elimina { margin-right: auto; color: var(--rischio); border-color: #F1C9
 .già-comprato[open] summary { margin-bottom: 8px; }
 .pillola { border: 1.5px solid var(--linea); background: var(--foglio); border-radius: 99px; padding: 7px 12px; font-size: 15px; cursor: pointer; }
 .aggiungi { grid-template-columns: 1fr 110px; }
+
+/* ---------- ingredienti per giorno ---------- */
+.aiuto { color: var(--inchiostro-2); font-size: 15.5px; margin: 0 0 12px; }
+.giorno-chip.lista { border-color: var(--basilico); color: var(--basilico-scuro); }
+.lista-spesa.ingredienti li.reparto-riga { display: block; }
+.lista-spesa.ingredienti li.reparto-riga small { display: block; font: 400 13.5px var(--testo); color: var(--inchiostro-2); margin-top: 2px; }
+.manca { flex: none; min-width: 92px; min-height: 40px; border-radius: 999px; border: 1.5px solid var(--zucca); background: var(--foglio); color: var(--zucca-testo); font-weight: 700; font-size: 15px; cursor: pointer; }
+.manca.attivo { background: var(--zucca); color: #3a1f00; }
+.stato-ingr.preso { flex: none; font-size: 14px; font-weight: 700; color: var(--basilico); padding: 0 6px; }

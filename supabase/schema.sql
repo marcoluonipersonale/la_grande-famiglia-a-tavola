@@ -85,3 +85,7 @@ create table public.tav_chat (               -- conversazioni con Claude (scritt
 -- tav-registrati  registrazione con codice famiglia (account già confermato)
 -- tav-calendario  feed iCalendar personale con i promemoria (?t=token)
 -- tav-chiedi      Chiedi a Claude, solo alimentazione/spesa/benessere; serve il segreto ANTHROPIC_API_KEY
+
+-- Migrazione tavola_ingredienti: ingredienti di ogni pasto (spesa per giorno, tasto "Manca")
+-- create table public.tav_ingredienti (id, famiglia_id, pasto_id -> tav_pasti on delete cascade, nome, quantita, ordine, created_at)
+-- RLS: tutto in comune dentro la famiglia. tav_spesa.ingrediente_id collega una voce della lista all'ingrediente.
