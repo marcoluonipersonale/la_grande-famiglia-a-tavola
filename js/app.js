@@ -627,7 +627,7 @@ function bolla(m) {
 }
 function cartaNonAttiva() {
   return `<div class="blocco zucca"><h3>Chiedi a Claude non è ancora attivo</h3>
-    <p>È l'unica parte a pagamento del sito: ogni risposta costa pochi centesimi di millesimo di euro, pagati con una chiave API Anthropic. ${S.me.ruolo === 'admin' ? 'Per attivarlo segui i passi nella <a href="#/guida">guida</a>, alla voce "Attivare Chiedi a Claude".' : 'Chiedi a chi ha creato la famiglia di attivarlo.'}</p></div>`;
+    <p>È l'unica parte a pagamento del sito: ogni risposta costa circa un centesimo di euro, pagato con una chiave API Anthropic. ${S.me.ruolo === 'admin' ? 'Per attivarlo segui i passi nella <a href="#/guida">guida</a>, alla voce "Attivare Chiedi a Claude".' : 'Chiedi a chi ha creato la famiglia di attivarlo.'}</p></div>`;
 }
 
 // ---------------------------------------------------------------- IO
