@@ -422,7 +422,11 @@ async function vistaSpesa() {
 
   const inCasa = (cose || []).filter((c) => c.stato !== 'da_comprare' && !S.spuntatiOra?.has(c.id));
   const presiOra = (cose || []).filter((c) => c.stato !== 'da_comprare' && S.spuntatiOra?.has(c.id));
-  const perReparto = REPARTI.map((r) => [r, daComprare.filter((c) => c.reparto === r)]).filter(([, l]) => l.length);
+  // raggruppata per giorno in cui serve (la più urgente in alto), dentro ogni giorno per reparto
+  const chiaveGiorno = (c) => (!c.serve_il ? 'zzz' : c.serve_il < oggi() ? oggi() : c.serve_il);
+  const titoloGiorno = (k) => (k === 'zzz' ? 'Senza un giorno preciso' : k === oggi() ? 'Per oggi' : k === piuGiorni(oggi(), 1) ? 'Per domani' : `Per ${dataMedia(k)}`);
+  const ordinaReparto = (a, b) => REPARTI.indexOf(a.reparto) - REPARTI.indexOf(b.reparto) || a.nome.localeCompare(b.nome);
+  const perReparto = [...new Set(daComprare.map(chiaveGiorno))].sort().map((k) => [titoloGiorno(k), daComprare.filter((c) => chiaveGiorno(c) === k).sort(ordinaReparto)]);
   pagina('spesa', `${testa}
     <p class="aiuto">Spunta quello che metti nel carrello. Per sapere cosa manca per un giorno, tocca il giorno qui sopra.</p>
     ${daComprare.length || presiOra.length ? `<ul class="lista-spesa grande">
@@ -536,8 +540,7 @@ async function vistaSpesaGiorni(testa, scelti, cose) {
 
 function rigaCosa(c) {
   const preso = c.stato !== 'da_comprare';
-  const quando = c.serve_il ? (c.serve_il <= oggi() ? 'per oggi' : `per ${dataMedia(c.serve_il)}`) : '';
-  const dettagli = [c.quantita, quando].filter(Boolean).join(' · ');
+  const dettagli = [c.quantita, c.reparto !== 'Altro' && c.reparto].filter(Boolean).join(' · ');
   return `<li class="${preso ? 'preso' : ''}">
     <input type="checkbox" class="spunta" data-preso="${c.id}" ${preso ? 'checked' : ''} aria-label="Comprato: ${esc(c.nome)}">
     <span class="nome" data-cosa="${c.id}" role="button" tabindex="0"><b>${esc(c.nome)}</b>${dettagli ? `<small>${esc(dettagli)}</small>` : ''}</span></li>`;
