@@ -21,6 +21,6 @@ Funzioni sul server (`supabase/functions`):
 - `tav-chiedi`: Chiedi a Claude. Serve il segreto `ANTHROPIC_API_KEY` (facoltativo `ANTHROPIC_MODEL`). Limite 40 domande al giorno a persona.
 
 ## Pubblicazione
-Indirizzo: https://grande-famiglia-a-tavola.pages.dev
+Indirizzo: https://la-grande-famiglia-a-tavola.pages.dev
 
 Cloudflare Pages (account marcoluoni.personale) collegato a questo repository, cartella pubblicata: la radice, nessuna build. Ogni push su `main` aggiorna il sito. Le intestazioni sono in `_headers` (`netlify.toml` resta per compatibilità).
