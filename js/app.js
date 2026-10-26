@@ -620,24 +620,30 @@ function cartaNonAttiva() {
 
 // ---------------------------------------------------------------- IO
 async function vistaIo() {
-  const { data: pesate } = await sb.from('tav_pesate').select('*').eq('user_id', S.me.user_id).order('giorno');
-  const p = pesate || [];
-  const ultima = p[p.length - 1], primaP = p[0];
+  const { data: pesate } = await sb.from('tav_pesate').select('*').eq('user_id', S.me.user_id).order('giorno').order('created_at');
+  // una misura per giorno: se ti sei pesato due volte vale l'ultima
+  const p = [...new Map((pesate || []).map((x) => [x.giorno, x])).values()];
+  // il confronto parte dalla prima misura degli ultimi 90 giorni (l'inizio del percorso attuale)
+  const recenti = p.filter((x) => x.giorno >= piuGiorni(oggi(), -90));
+  const ultima = p[p.length - 1], primaP = recenti[0] || p[0];
   const me = S.me;
   const icsHttps = `${SUPABASE_URL}/functions/v1/tav-calendario?t=${me.ics_token}`;
   const icsWebcal = icsHttps.replace(/^https:/, 'webcal:');
   const mancano = ultima?.peso_kg && me.obiettivo_kg ? ultima.peso_kg - me.obiettivo_kg : null;
   pagina('io', `
     ${testata(esc(me.nome), 'Il mio spazio')}
-    <div class="due">
+    <div class="due quattro">
       <div class="blocco"><p class="tenue piccolo" style="margin:0">Peso</p><p class="numero">${num(ultima?.peso_kg)}<small>kg</small></p>
         ${ultima && primaP && ultima !== primaP ? variazione(ultima.peso_kg - primaP.peso_kg, `dal ${daYmd(primaP.giorno).getDate()} ${MESI[daYmd(primaP.giorno).getMonth()]}`) : ''}
         ${mancano != null ? `<p class="tenue piccolo" style="margin:0">${mancano > 0 ? `Mancano ${num(mancano)} kg all'obiettivo di ${num(me.obiettivo_kg)}` : 'Obiettivo raggiunto!'}</p>` : ''}</div>
-      <div class="blocco"><p class="tenue piccolo" style="margin:0">Giro vita</p>${(() => { const v = p.filter((x) => x.vita_cm); const u = v[v.length - 1], f = v[0]; return u ? `<p class="numero">${num(u.vita_cm)}<small>cm</small></p>${f !== u ? `<p class="variazione ${u.vita_cm - f.vita_cm <= 0 ? 'giu' : 'su'}">${u.vita_cm - f.vita_cm <= 0 ? '−' : '+'}${num(Math.abs(u.vita_cm - f.vita_cm))} cm dall'inizio</p>` : ''}` : '<p class="tenue piccolo">Misuralo all\'altezza dell\'ombelico, una volta a settimana.</p>'; })()}</div>
+      ${cartaValore(p, 'grasso_pct', 'Grasso', '%', true)}
+      ${cartaValore(p, 'muscoli_kg', 'Massa muscolare', 'kg', false)}
+      ${cartaValore(p, 'viscerale', 'Grasso viscerale', '', true, 'Sotto 10 va bene')}
     </div>
+    ${letturaComposizione(p)}
     <p class="azioni"><button class="btn" id="pesati">Registra peso e misure</button><a class="btn secondario" href="#/sport">Sport e attività</a></p>
     ${p.filter((x) => x.peso_kg).length >= 2 ? `<h2>Andamento del peso</h2><div class="blocco">${graficoPeso(p.filter((x) => x.peso_kg), me.obiettivo_kg)}</div>` : ''}
-    ${p.length ? `<h2>Ultime misure</h2><ul class="lista-spesa">${p.slice(-8).reverse().map((x) => `<li><span class="nome" data-pesata="${x.id}" role="button" tabindex="0"><b>${maiuscola(dataConMese(x.giorno))}</b><small>${[x.peso_kg && `${num(x.peso_kg)} kg`, x.grasso_pct && `grasso ${num(x.grasso_pct)}%`, x.vita_cm && `vita ${num(x.vita_cm)} cm`].filter(Boolean).join(' · ')}</small></span></li>`).join('')}</ul>` : ''}
+    ${p.length ? `<h2>Ultime misure</h2><ul class="lista-spesa">${p.slice(-8).reverse().map((x) => `<li><span class="nome" data-pesata="${x.id}" role="button" tabindex="0"><b>${maiuscola(dataConMese(x.giorno))}</b><small>${[x.peso_kg && `${num(x.peso_kg)} kg`, x.grasso_pct && `grasso ${num(x.grasso_pct)}%`, x.muscoli_kg && `muscoli ${num(x.muscoli_kg, 2)} kg`, x.viscerale && `viscerale ${num(x.viscerale)}`, x.acqua_pct && `acqua ${num(x.acqua_pct)}%`].filter(Boolean).join(' · ')}</small></span></li>`).join('')}</ul>` : ''}
 
     <h2>Promemoria sul telefono</h2>
     <div class="blocco verde">
@@ -686,24 +692,51 @@ async function vistaIo() {
   attivaGrafico();
 }
 
+function cartaValore(p, campo, titolo, unita, menoEMeglio, nota = '') {
+  const v = p.filter((x) => x[campo] != null);
+  const u = v[v.length - 1], prec = v[v.length - 2];
+  if (!u) return `<div class="blocco"><p class="tenue piccolo" style="margin:0">${titolo}</p><p class="tenue piccolo">Lo trovi sulla bilancia Renpho.</p></div>`;
+  const d = prec ? Number(u[campo]) - Number(prec[campo]) : 0;
+  const bene = menoEMeglio ? d <= 0 : d >= 0;
+  return `<div class="blocco"><p class="tenue piccolo" style="margin:0">${titolo}</p><p class="numero">${num(u[campo], campo === 'muscoli_kg' ? 2 : 1)}${unita ? `<small>${unita}</small>` : ''}</p>
+    ${prec ? `<p class="variazione ${bene ? 'giu' : 'su'}">${d === 0 ? 'stabile' : `${d < 0 ? '−' : '+'}${num(Math.abs(d), 2)}`} dalla volta prima</p>` : nota ? `<p class="tenue piccolo" style="margin:0">${nota}</p>` : ''}</div>`;
+}
+// Dice in parole se il peso perso è grasso o muscolo (confronto con la prima misura completa)
+function letturaComposizione(p) {
+  const c = p.filter((x) => x.peso_kg && x.grasso_pct && x.muscoli_kg && x.giorno >= piuGiorni(oggi(), -90));
+  if (c.length < 2) return '';
+  const a = c[0], b = c[c.length - 1];
+  const grassoA = a.peso_kg * a.grasso_pct / 100, grassoB = b.peso_kg * b.grasso_pct / 100;
+  const dP = b.peso_kg - a.peso_kg, dG = grassoB - grassoA, dM = b.muscoli_kg - a.muscoli_kg;
+  const segno = (x) => `${x < 0 ? '−' : '+'}${num(Math.abs(x))} kg`;
+  const giudizio = dG < 0 && dM >= -0.3 ? 'Bene: stai perdendo grasso e tenendo i muscoli.'
+    : dG < 0 ? 'Stai perdendo grasso, ma anche un po\' di muscolo: proteine a ogni pasto e un po\' di forza aiutano.'
+    : dG > 0 ? 'Il grasso è salito: conta la media delle prossime settimane, non la singola pesata.' : 'Grasso stabile.';
+  return `<div class="blocco verde"><p style="margin:0 0 4px"><b>Dal ${daYmd(a.giorno).getDate()} ${MESI[daYmd(a.giorno).getMonth()]}:</b> peso ${segno(dP)}, di cui grasso ${segno(dG)} e muscoli ${segno(dM)}.</p><p class="piccolo" style="margin:0">${giudizio}</p></div>`;
+}
+
 async function nuovaPesata(dopo) { return modificaPesata(null, dopo); }
 async function modificaPesata(x, dopo) {
   const r = await finestra(`
     <h2>${x ? 'Misure del ' + dataMedia(x.giorno) : 'Peso e misure'}</h2>
-    <p class="tenue piccolo">Al mattino, a digiuno, dopo il bagno. Basta il peso: il resto è facoltativo.</p>
+    <p class="tenue piccolo">Al mattino, a digiuno, dopo il bagno. Copia i valori dalla bilancia Renpho: basta il peso, il resto è facoltativo.</p>
     <label class="campo">Giorno<input type="date" name="giorno" value="${x?.giorno || oggi()}" required></label>
     <div class="riga-campi">
       <label class="campo">Peso (kg)<input type="number" name="peso_kg" value="${x?.peso_kg ?? ''}" min="20" max="300" step="0.05" inputmode="decimal" required></label>
       <label class="campo">Grasso (%)<input type="number" name="grasso_pct" value="${x?.grasso_pct ?? ''}" min="3" max="70" step="0.1" inputmode="decimal"></label>
-      <label class="campo">Vita (cm)<input type="number" name="vita_cm" value="${x?.vita_cm ?? ''}" min="40" max="200" step="0.5" inputmode="decimal"></label>
+    </div>
+    <div class="riga-campi">
+      <label class="campo">Massa muscolare (kg)<input type="number" name="muscoli_kg" value="${x?.muscoli_kg ?? ''}" min="10" max="150" step="0.01" inputmode="decimal"></label>
+      <label class="campo">Grasso viscerale<input type="number" name="viscerale" value="${x?.viscerale ?? ''}" min="1" max="60" step="1" inputmode="numeric"></label>
+      <label class="campo">Acqua (%)<input type="number" name="acqua_pct" value="${x?.acqua_pct ?? ''}" min="20" max="80" step="0.1" inputmode="decimal"></label>
     </div>
     <div class="azioni">${x ? '<button class="btn elimina" value="elimina" formnovalidate>Elimina</button>' : ''}<button class="btn secondario" value="annulla" formnovalidate>Annulla</button><button class="btn" value="salva">Salva</button></div>`);
   if (!r) return;
   const n = (v) => (v === '' || v == null ? null : Number(String(v).replace(',', '.')));
   let res;
   if (r.azione === 'elimina') res = await sb.from('tav_pesate').delete().eq('id', x.id);
-  else if (x) res = await sb.from('tav_pesate').update({ giorno: r.giorno, peso_kg: n(r.peso_kg), grasso_pct: n(r.grasso_pct), vita_cm: n(r.vita_cm) }).eq('id', x.id);
-  else res = await sb.from('tav_pesate').insert({ user_id: S.me.user_id, giorno: r.giorno, peso_kg: n(r.peso_kg), grasso_pct: n(r.grasso_pct), vita_cm: n(r.vita_cm) });
+  else if (x) res = await sb.from('tav_pesate').update({ giorno: r.giorno, peso_kg: n(r.peso_kg), grasso_pct: n(r.grasso_pct), muscoli_kg: n(r.muscoli_kg), viscerale: n(r.viscerale), acqua_pct: n(r.acqua_pct) }).eq('id', x.id);
+  else res = await sb.from('tav_pesate').insert({ user_id: S.me.user_id, giorno: r.giorno, peso_kg: n(r.peso_kg), grasso_pct: n(r.grasso_pct), muscoli_kg: n(r.muscoli_kg), viscerale: n(r.viscerale), acqua_pct: n(r.acqua_pct) });
   if (res.error) return errore(res.error);
   avviso(r.azione === 'elimina' ? 'Misura eliminata' : 'Misure salvate');
   dopo();
@@ -873,7 +906,7 @@ function vistaGuida() {
       <li>Fatto: la funzione è già pronta. Ogni persona può fare fino a 40 domande al giorno.</li></ol>
       <h2>Io, peso e sport</h2>
       <ul>
-        <li>Registra peso, percentuale di grasso e giro vita, anche presi dalla bilancia Renpho. Conta la media del mese, non la singola pesata.</li>
+        <li>Registra peso, grasso, massa muscolare, grasso viscerale e acqua copiandoli dalla bilancia Renpho. Il sito ti dice se stai perdendo grasso o muscolo. Conta l'andamento del mese, non la singola pesata.</li>
         <li>Nel profilo metti altezza, obiettivo, calorie e cosa eviti: Claude ne tiene conto.</li>
         <li>In "Sport e attività" registri giri in bici, camminate e allenamenti. Se segni le calorie, il sito ti dice quanto puoi mangiare in più la sera.</li>
       </ul>

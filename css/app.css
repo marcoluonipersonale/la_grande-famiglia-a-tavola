@@ -254,3 +254,8 @@ dialog .elimina { margin-right: auto; color: var(--rischio); border-color: #F1C9
 .manca { flex: none; min-width: 92px; min-height: 40px; border-radius: 999px; border: 1.5px solid var(--zucca); background: var(--foglio); color: var(--zucca-testo); font-weight: 700; font-size: 15px; cursor: pointer; }
 .manca.attivo { background: var(--zucca); color: #3a1f00; }
 .stato-ingr.preso { flex: none; font-size: 14px; font-weight: 700; color: var(--basilico); padding: 0 6px; }
+
+.due.quattro { grid-template-columns: 1fr 1fr; gap: 10px; }
+.due.quattro .blocco { margin-bottom: 0; }
+.due.quattro + .blocco, .due.quattro + .azioni { margin-top: 12px; }
+@media (max-width: 380px) { .due.quattro .numero { font-size: 28px; } }
