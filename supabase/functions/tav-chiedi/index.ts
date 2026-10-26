@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
   const domani = new Date(oggi + 'T12:00:00Z'); domani.setUTCDate(domani.getUTCDate() + 1);
   const [{ data: pasti }, { data: pesate }, { data: att }, { data: storia }] = await Promise.all([
     admin.from('tav_pasti').select('giorno, momento, testo').eq('famiglia_id', me.famiglia_id).gte('giorno', oggi).lte('giorno', domani.toISOString().slice(0, 10)),
-    admin.from('tav_pesate').select('giorno, peso_kg, grasso_pct, vita_cm').eq('user_id', uid).order('giorno', { ascending: false }).limit(5),
+    admin.from('tav_pesate').select('giorno, peso_kg, grasso_pct, muscoli_kg, viscerale, acqua_pct').eq('user_id', uid).order('giorno', { ascending: false }).limit(5),
     admin.from('tav_attivita').select('giorno, tipo, durata_min, km, kcal').eq('user_id', uid).order('giorno', { ascending: false }).limit(5),
     admin.from('tav_chat').select('ruolo, testo').eq('user_id', uid).order('created_at', { ascending: false }).limit(10),
   ]);
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
     `Oggi è ${oggi}. Stai parlando con ${me.nome}.`,
     `Profilo: ${[eta && `${eta} anni`, me.altezza_cm && `${me.altezza_cm} cm`, me.obiettivo_kg && `obiettivo ${me.obiettivo_kg} kg`, me.kcal_giorno && `circa ${me.kcal_giorno} kcal al giorno`].filter(Boolean).join(', ') || 'non compilato'}.`,
     me.preferenze ? `Preferenze e cose da evitare: ${me.preferenze}` : '',
-    pesate?.length ? `Ultime pesate: ${pesate.map((p) => `${p.giorno} ${p.peso_kg ?? '?'} kg${p.grasso_pct ? `, grasso ${p.grasso_pct}%` : ''}${p.vita_cm ? `, vita ${p.vita_cm} cm` : ''}`).join('; ')}` : '',
+    pesate?.length ? `Ultime pesate: ${pesate.map((p) => `${p.giorno} ${p.peso_kg ?? '?'} kg${p.grasso_pct ? `, grasso ${p.grasso_pct}%` : ''}${p.muscoli_kg ? `, muscoli ${p.muscoli_kg} kg` : ''}${p.viscerale ? `, viscerale ${p.viscerale}` : ''}${p.acqua_pct ? `, acqua ${p.acqua_pct}%` : ''}`).join('; ')}` : '',
     att?.length ? `Ultime attività: ${att.map((a) => `${a.giorno} ${a.tipo}${a.durata_min ? ` ${a.durata_min} min` : ''}${a.km ? ` ${a.km} km` : ''}${a.kcal ? ` ${a.kcal} kcal` : ''}`).join('; ')}` : '',
     pasti?.length ? `Menu di famiglia oggi e domani: ${pasti.map((p) => `${p.giorno} ${MOMENTI[p.momento]}: ${p.testo}`).join('; ')}` : '',
   ].filter(Boolean).join('\n');
