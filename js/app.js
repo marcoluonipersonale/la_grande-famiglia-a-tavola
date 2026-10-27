@@ -96,6 +96,8 @@ const ICONE = {
   famiglia: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8.5" r="3.2"/><circle cx="17" cy="9.5" r="2.5"/><path d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15.5 14.6c2.5-.2 4.5 1.1 5.3 3.6"/></svg>',
   indietro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>',
   avanti: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg>',
+  microfono: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
+  altoparlante: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
   invia: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
 };
 
@@ -583,7 +585,8 @@ async function vistaChiedi(param = {}) {
     ${messaggi.length ? '' : `<div class="blocco verde"><p style="margin:0">Chiedi se puoi sostituire un alimento, quanto mangiarne, cosa portare al lavoro o quanto mangiare dopo lo sport. Claude conosce il menu di famiglia, le tue preferenze e i tuoi progressi. Parla solo di alimentazione, spesa e benessere.</p></div>`}
     <div class="chat" id="chat">${messaggi.map(bolla).join('')}</div>
     <div class="suggerimenti">${SUGGERIMENTI.slice(0, messaggi.length ? 3 : 6).map((s) => `<button data-sugg="${esc(s)}">${esc(s)}</button>`).join('')}</div>
-    <form class="scrivi" id="f-chiedi"><textarea name="domanda" rows="1" placeholder="Scrivi la tua domanda" aria-label="La tua domanda" required maxlength="2000">${esc(param.q || '')}</textarea><button class="btn" aria-label="Invia">${ICONE.invia}</button></form>
+    <form class="scrivi" id="f-chiedi"><textarea name="domanda" rows="1" placeholder="${Riconoscimento ? 'Scrivi o tocca il microfono' : 'Scrivi la tua domanda'}" aria-label="La tua domanda" required maxlength="2000">${esc(param.q || '')}</textarea>${Riconoscimento ? `<button type="button" class="btn vuoto mic" id="mic" aria-label="Parla">${ICONE.microfono}</button>` : ''}<button class="btn" id="invia" aria-label="Invia">${ICONE.invia}</button></form>
+    <p class="voce-stato" id="voce-stato" hidden></p>
     ${messaggi.length ? '<p style="text-align:center"><button class="link-btn piccolo" id="pulisci">Cancella la conversazione</button></p>' : ''}
     ${FIRMA}`);
   const f = document.getElementById('f-chiedi'), ta = f.querySelector('textarea'), chat = document.getElementById('chat');
@@ -594,24 +597,66 @@ async function vistaChiedi(param = {}) {
   app.querySelectorAll('[data-sugg]').forEach((b) => b.onclick = () => { ta.value = b.dataset.sugg; adatta(); f.requestSubmit(); });
   const pl = document.getElementById('pulisci');
   if (pl) pl.onclick = async () => { if (await conferma('Cancellare tutta la conversazione?', 'Cancella')) { await sb.from('tav_chat').delete().eq('user_id', S.me.user_id); vistaChiedi(); } };
+  collegaAscolta(chat);
+  let aVoce = false;
+  const mic = document.getElementById('mic'), stato = document.getElementById('voce-stato');
+  if (mic) {
+    let rec = null;
+    mic.onclick = () => {
+      if (rec) { rec.stop(); return; }
+      zitto();
+      rec = new Riconoscimento(); rec.lang = 'it-IT'; rec.interimResults = true; rec.continuous = false;
+      const prima = ta.value.trim();
+      mic.classList.add('ascolta'); stato.hidden = false; stato.textContent = 'Ti ascolto… parla pure';
+      rec.onresult = (ev) => { const t = Array.from(ev.results).map((r) => r[0].transcript).join(''); ta.value = (prima ? prima + ' ' : '') + t; adatta(); };
+      rec.onerror = (ev) => { stato.textContent = ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? 'Il microfono è bloccato: consentilo nelle impostazioni del browser per questo sito.' : ev.error === 'no-speech' ? 'Non ho sentito niente, riprova.' : 'Non riesco ad ascoltare adesso, riprova.'; };
+      rec.onend = () => {
+        mic.classList.remove('ascolta'); rec = null;
+        if (ta.value.trim() && ta.value.trim() !== prima) { stato.hidden = true; aVoce = true; f.requestSubmit(); }
+        else if (stato.textContent === 'Ti ascolto… parla pure') stato.hidden = true;
+      };
+      try { rec.start(); } catch { mic.classList.remove('ascolta'); rec = null; }
+    };
+  }
   f.onsubmit = async (e) => {
     e.preventDefault();
+    const leggi = aVoce; aVoce = false;
     const domanda = ta.value.trim(); if (!domanda) return;
     ta.value = ''; adatta();
     chat.insertAdjacentHTML('beforeend', bolla({ ruolo: 'user', testo: domanda }) + '<div class="msg assistant attesa" id="attesa">Claude ci sta pensando…</div>');
     document.getElementById('attesa').scrollIntoView({ block: 'end', behavior: 'smooth' });
-    const btn = f.querySelector('button'); btn.disabled = true;
+    const btn = document.getElementById('invia'); btn.disabled = true;
     const r = await chiama('tav-chiedi', { domanda });
     document.getElementById('attesa')?.remove(); btn.disabled = false;
     if (r.status === 503 && r.dati.errore === 'non_attivo') { S.chatNonAttiva = true; chat.lastElementChild?.remove(); ta.value = domanda; vistaChiedi({ q: domanda }); return; }
     if (!r.ok) { chat.insertAdjacentHTML('beforeend', `<div class="msg assistant"><span class="chi">Avviso</span>${esc(r.dati.errore || 'Non riesco a rispondere adesso, riprova tra poco.')}</div>`); return; }
     chat.insertAdjacentHTML('beforeend', bolla({ ruolo: 'assistant', testo: r.dati.risposta }));
     chat.lastElementChild.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (leggi) chat.lastElementChild.querySelector('.ascolta-btn')?.click();
+  };
+}
+// Voce: dettatura e lettura ad alta voce, gratis, fatte dal telefono (Web Speech API).
+const Riconoscimento = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const puoParlare = 'speechSynthesis' in window;
+function zitto() { if (puoParlare) speechSynthesis.cancel(); document.querySelectorAll('.ascolta-btn.attivo').forEach((b) => { b.classList.remove('attivo'); b.lastChild.textContent = 'Ascolta'; }); }
+function vocePerItaliano() { const v = speechSynthesis.getVoices().filter((x) => x.lang?.toLowerCase().startsWith('it')); return v.find((x) => /premium|enhanced|natural|google/i.test(x.name)) || v[0] || null; }
+function collegaAscolta(chat) {
+  if (!puoParlare) return;
+  speechSynthesis.getVoices();
+  chat.onclick = (e) => {
+    const b = e.target.closest('.ascolta-btn'); if (!b) return;
+    if (b.classList.contains('attivo')) { zitto(); return; }
+    zitto();
+    const testo = b.closest('.msg').querySelector('.testo').textContent.replace(/[•*#]/g, ' ').replace(/\s+/g, ' ').trim();
+    const u = new SpeechSynthesisUtterance(testo); u.lang = 'it-IT'; const v = vocePerItaliano(); if (v) u.voice = v; u.rate = 1.02;
+    u.onend = u.onerror = () => { b.classList.remove('attivo'); b.lastChild.textContent = 'Ascolta'; };
+    b.classList.add('attivo'); b.lastChild.textContent = 'Ferma';
+    speechSynthesis.speak(u);
   };
 }
 function bolla(m) {
   const testo = esc(m.testo).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  return m.ruolo === 'user' ? `<div class="msg user">${testo}</div>` : `<div class="msg assistant"><span class="chi"><img src="icons/logo.svg" alt="" width="16" height="16">Claude</span>${testo}</div>`;
+  return m.ruolo === 'user' ? `<div class="msg user">${testo}</div>` : `<div class="msg assistant"><span class="chi"><img src="icons/logo.svg" alt="" width="16" height="16">Claude${puoParlare ? `<button type="button" class="ascolta-btn" aria-label="Ascolta la risposta">${ICONE.altoparlante}<span>Ascolta</span></button>` : ''}</span><span class="testo">${testo}</span></div>`;
 }
 function cartaNonAttiva() {
   return `<div class="blocco zucca"><h3>Chiedi a Claude non è ancora attivo</h3>
@@ -899,6 +944,7 @@ function vistaGuida() {
       <p>Su iPhone: Impostazioni › Calendario › Account, controlla che il calendario "A tavola" sia attivo e che le notifiche del Calendario siano accese. Il telefono aggiorna il calendario da solo ogni qualche ora.</p>
       <h2>Chiedi a Claude</h2>
       <p>Chiedi se puoi sostituire un alimento, quanto mangiarne, cosa portare al lavoro, cosa mangiare dopo lo sport o se un prodotto va bene. Claude vede il menu di famiglia, il tuo profilo, le preferenze, gli ultimi pesi e le attività. Parla solo di alimentazione, spesa e benessere: per il resto risponde che non è la persona giusta. Non sostituisce il medico.</p>
+      <p><b>A voce:</b> tocca il microfono accanto alla casella e parla. Quando smetti, la domanda parte da sola e la risposta viene letta ad alta voce. Su ogni risposta c'è anche il tasto "Ascolta". La voce è gratis: la fa il telefono. La prima volta il browser chiede il permesso di usare il microfono.</p>
       <h3>Attivare Chiedi a Claude</h3>
       <p>È l'unica parte a pagamento. Serve una chiave API Anthropic:</p>
       <ol><li>Su console.anthropic.com crea l'account, aggiungi un po' di credito e crea una chiave API.</li>

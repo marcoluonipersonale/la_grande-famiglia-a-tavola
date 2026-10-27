@@ -2,5 +2,5 @@
 // La chiave pubblicabile è fatta per stare nel browser: i dati sono protetti dalle regole sul database.
 export const SUPABASE_URL = 'https://ayxkkhonseeemfsbhspy.supabase.co';
 export const SUPABASE_KEY = 'sb_publishable_UQupr9rfBYNsgDHasSZpmg_xVlKa17F';
-export const VERSIONE = '1.4';
-export const DATA_VERSIONE = '26 ottobre 2026';
+export const VERSIONE = '1.5';
+export const DATA_VERSIONE = '27 ottobre 2026';
