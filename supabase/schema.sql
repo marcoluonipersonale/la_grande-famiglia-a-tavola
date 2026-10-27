@@ -89,3 +89,8 @@ create table public.tav_chat (               -- conversazioni con Claude (scritt
 -- Migrazione tavola_ingredienti: ingredienti di ogni pasto (spesa per giorno, tasto "Manca")
 -- create table public.tav_ingredienti (id, famiglia_id, pasto_id -> tav_pasti on delete cascade, nome, quantita, ordine, created_at)
 -- RLS: tutto in comune dentro la famiglia. tav_spesa.ingrediente_id collega una voce della lista all'ingrediente.
+
+-- tav_ricette (migrazione tavola_ricette): ricettario di famiglia.
+-- id, famiglia_id, titolo, categoria, tempo_min, porzioni, ingredienti (una riga per voce), passi (un passaggio per riga),
+-- consiglio, parole text[] (frasi che collegano la ricetta ai pasti del menu; "=testo" = uguale esatto), created_by, created_at, updated_at.
+-- RLS: tutto in comune dentro la famiglia. Alla prima apertura il sito carica dati/ricette-base.json.

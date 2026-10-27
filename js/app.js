@@ -10,7 +10,7 @@ const app = document.getElementById('app');
 const S = {
   sessione: null, me: null, famiglia: null, membri: [],
   lunedi: null, spuntini: true, giorniSpesa: null, spuntatiOra: null,
-  chatNonAttiva: false,
+  chatNonAttiva: false, ricette: null, prima: '#/oggi',
 };
 
 // ---------------------------------------------------------------- utilità
@@ -96,13 +96,16 @@ const ICONE = {
   famiglia: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8.5" r="3.2"/><circle cx="17" cy="9.5" r="2.5"/><path d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15.5 14.6c2.5-.2 4.5 1.1 5.3 3.6"/></svg>',
   indietro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>',
   avanti: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg>',
+  ricette: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path class="piatto" d="M5 4.5h11a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8.5h6M9 11h4"/></svg>',
+  matita: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
+  orologio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" width="16" height="16"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
   microfono: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>',
   altoparlante: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
   invia: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
 };
 
 function barra(attiva) {
-  const voci = [['oggi', 'Oggi'], ['settimana', 'Settimana'], ['spesa', 'Spesa'], ['chiedi', 'Chiedi'], ['io', 'Io']];
+  const voci = [['oggi', 'Oggi'], ['settimana', 'Settimana'], ['spesa', 'Spesa'], ['ricette', 'Ricette'], ['chiedi', 'Chiedi'], ['io', 'Io']];
   return `<nav class="barra" aria-label="Sezioni"><ul>${voci.map(([k, t]) => `<li><a href="#/${k}"${k === attiva ? ' aria-current="page"' : ''}>${ICONE[k]}<span>${t}</span></a></li>`).join('')}</ul></nav>`;
 }
 function testata(titolo, sopra = '', { indietro = '', extra = true } = {}) {
@@ -141,7 +144,7 @@ async function caricaMe() {
   const uid = S.sessione.user.id;
   const { data: me, error } = await sb.from('tav_membri').select('*').eq('user_id', uid).maybeSingle();
   if (error) throw error;
-  S.me = me;
+  S.me = me; S.ricette = null;
   if (!me) return;
   const [{ data: fam }, { data: membri }] = await Promise.all([
     sb.from('tav_famiglie').select('*').eq('id', me.famiglia_id).single(),
@@ -214,6 +217,7 @@ function vistaUnisciti() {
 
 // ---------------------------------------------------------------- OGGI
 async function vistaOggi() {
+  await caricaRicette();
   const g = oggi(), domani = piuGiorni(g, 1);
   const [{ data: pasti }, { data: manca }, { data: pesate }] = await Promise.all([
     sb.from('tav_pasti').select('*').in('giorno', [g, domani]),
@@ -240,8 +244,9 @@ async function vistaOggi() {
         <p class="quando">${quando}</p>
         <p class="piatto-grande">${esc(piatto)}</p>
         ${resto.length ? `<p class="resto">poi ${esc(resto.join(', '))}</p>` : ''}
-        <div class="azioni"><button class="btn" data-fatto="${cena.id}" data-valore="${!cena.fatto}">${cena.fatto ? 'Cena fatta, annulla' : 'Fatto, cena finita'}</button>
-        <a class="btn vuoto" href="#/chiedi?q=${encodeURIComponent(`Stasera c'è "${cena.testo}": con cosa posso sostituire qualcosa?`)}">Chiedi una sostituzione</a></div>
+        <div class="azioni">${ricettePer(cena.testo).length ? `<a class="btn" href="#/pasto?id=${cena.id}">${ICONE.ricette}Come si prepara</a>` : ''}<button class="btn${ricettePer(cena.testo).length ? ' vuoto' : ''}" data-fatto="${cena.id}" data-valore="${!cena.fatto}">${cena.fatto ? 'Cena fatta, annulla' : 'Fatto, cena finita'}</button>
+</div>
+        <p class="sostituzione"><a href="#/chiedi?q=${encodeURIComponent(`Stasera c'è "${cena.testo}": con cosa posso sostituire qualcosa?`)}">Ti manca qualcosa? Chiedi una sostituzione</a></p>
       </section>`
     : cenaDomani ? `<section class="stasera"><p class="quando">Domani sera a cena</p><p class="piatto-grande">${esc(cenaDomani.testo.split(/,\s*poi\s+|;\s*/i)[0])}</p>
         <p class="resto">Oggi non c'è niente in programma: il menu riparte domani.</p>
@@ -284,7 +289,7 @@ function tabellaGiorno(pasti, conSpuntini = S.spuntini, giorno = null) {
   return `<table class="tavola"><tbody>${righe.map((p) => `
     <tr class="${p.fatto ? 'fatto ' : ''}${SPUNTINI.has(p.momento) ? 'spuntino ' : ''}${p.momento === 'cena' ? 'cena' : ''}">
       <th scope="row">${NOME_MOMENTO[p.momento]}</th>
-      <td class="testo-pasto" data-modifica="${p.id}" tabindex="0" role="button" aria-label="Modifica ${NOME_MOMENTO[p.momento]}">${esc(p.testo)}${p.note ? `<br><small class="tenue">${esc(p.note)}</small>` : ''}</td>
+      <td class="testo-pasto" data-modifica="${p.id}" tabindex="0" role="button" aria-label="Apri ${NOME_MOMENTO[p.momento]}: come si prepara">${esc(p.testo)}${p.note ? `<br><small class="tenue">${esc(p.note)}</small>` : ''}${ricettePer(p.testo).length ? '<span class="ha-ricetta">Come si prepara ›</span>' : ''}</td>
       <td class="cella-spunta"><input type="checkbox" class="spunta" data-spunta="${p.id}" ${p.fatto ? 'checked' : ''} aria-label="Fatto: ${NOME_MOMENTO[p.momento]}"></td>
     </tr>`).join('')}</tbody></table>`;
 }
@@ -294,10 +299,7 @@ function collegaTabella(ridisegna) {
     const { error } = await sb.from('tav_pasti').update({ fatto: c.checked }).eq('id', c.dataset.spunta);
     if (error) errore(error);
   });
-  const apri = async (id) => {
-    const { data: p } = await sb.from('tav_pasti').select('*').eq('id', id).single();
-    if (await modificaPasto(p)) ridisegna();
-  };
+  const apri = (id) => { location.hash = `#/pasto?id=${id}`; };
   app.querySelectorAll('[data-modifica]').forEach((t) => {
     t.onclick = () => apri(t.dataset.modifica);
     t.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apri(t.dataset.modifica); } };
@@ -351,6 +353,7 @@ async function modificaPasto(p) {
 
 // ---------------------------------------------------------------- SETTIMANA
 async function vistaSettimana() {
+  await caricaRicette();
   // la domenica il menu che conta è quello della settimana che parte domani
   if (!S.lunedi) S.lunedi = daYmd(oggi()).getDay() === 0 ? piuGiorni(oggi(), 1) : lunediDi(oggi());
   const lun = S.lunedi, dom = piuGiorni(lun, 6);
@@ -663,6 +666,179 @@ function cartaNonAttiva() {
     <p>È l'unica parte a pagamento del sito: ogni risposta costa circa un centesimo di euro, pagato con una chiave API Anthropic. ${S.me.ruolo === 'admin' ? 'Per attivarlo segui i passi nella <a href="#/guida">guida</a>, alla voce "Attivare Chiedi a Claude".' : 'Chiedi a chi ha creato la famiglia di attivarlo.'}</p></div>`;
 }
 
+// ---------------------------------------------------------------- RICETTE
+const CATEGORIE = ['Primi', 'Secondi', 'Piatti unici', 'Contorni', 'Pranzi da portare', 'Colazioni e dolci', 'Spuntini'];
+async function caricaRicette(forza = false) {
+  if (S.ricette && !forza) return S.ricette;
+  const { data, error } = await sb.from('tav_ricette').select('*').order('titolo');
+  if (error) { S.ricette = []; return S.ricette; }
+  S.ricette = data || [];
+  // la prima volta la famiglia riceve il ricettario di base
+  if (!S.ricette.length && !S.ricetteSeminate) {
+    S.ricetteSeminate = true;
+    try {
+      const base = await (await fetch('dati/ricette-base.json', { cache: 'no-store' })).json();
+      const righe = base.map((r) => ({ ...r, famiglia_id: S.me.famiglia_id, created_by: S.me.user_id }));
+      const { data: nuove } = await sb.from('tav_ricette').insert(righe).select();
+      S.ricette = (nuove || []).sort((a, b) => a.titolo.localeCompare(b.titolo));
+    } catch (e) { console.warn(e); }
+  }
+  return S.ricette;
+}
+const normale = (t) => String(t || '').toLowerCase().replace(/\s*\([^)]*\)/g, '').replace(/[’`]/g, "'").replace(/\s+/g, ' ').trim();
+function ricettePer(testo) {
+  const t = normale(testo);
+  if (!t || !S.ricette) return [];
+  return S.ricette.map((r) => {
+    let pos = -1;
+    for (const p of r.parole || []) {
+      const q = normale(p);
+      const k = q.startsWith('=') ? (t === q.slice(1) ? 0 : -1) : t.indexOf(q);
+      if (k >= 0 && (pos < 0 || k < pos)) pos = k;
+    }
+    return [pos, r];
+  }).filter(([pos]) => pos >= 0).sort((a, b) => a[0] - b[0]).map(([, r]) => r);
+}
+const righe = (t) => String(t || '').split('\n').map((x) => x.trim()).filter(Boolean);
+function schedaRicetta(r, { titoloPiccolo = false } = {}) {
+  return `<article class="ricetta" data-ricetta="${r.id}">
+    <div class="ricetta-testa">${titoloPiccolo ? `<h2>${esc(r.titolo)}</h2>` : ''}
+      <p class="ricetta-meta">${r.tempo_min ? `<span>${ICONE.orologio}${r.tempo_min} min</span>` : ''}<span>${esc(r.categoria)}</span></p>
+      ${r.porzioni ? `<p class="ricetta-porzioni">${esc(r.porzioni)}</p>` : ''}</div>
+    <h3>Ingredienti</h3>
+    <ul class="ricetta-ingredienti">${righe(r.ingredienti).map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+    <h3>Come si fa</h3>
+    <ol class="ricetta-passi">${righe(r.passi).map((x) => `<li>${esc(x)}</li>`).join('')}</ol>
+    ${r.consiglio ? `<div class="blocco verde consiglio"><b>Il consiglio</b><br>${esc(r.consiglio)}</div>` : ''}
+    <div class="azioni">${puoParlare ? `<button type="button" class="btn vuoto piccolo" data-leggi="${r.id}">${ICONE.altoparlante}<span>Leggimela</span></button>` : ''}
+      <a class="btn vuoto piccolo" href="#/chiedi?q=${encodeURIComponent(`Per la ricetta "${r.titolo}": come posso cambiarla con quello che ho in casa?`)}">Chiedi una variante</a>
+      <button type="button" class="btn secondario piccolo" data-modifica-ricetta="${r.id}">${ICONE.matita}Modifica</button></div>
+  </article>`;
+}
+function collegaSchede(ridisegna) {
+  app.querySelectorAll('[data-leggi]').forEach((b) => b.onclick = () => {
+    if (b.classList.contains('attivo')) { zitto(); b.classList.remove('attivo'); b.lastChild.textContent = 'Leggimela'; return; }
+    zitto();
+    const r = S.ricette.find((x) => x.id === b.dataset.leggi);
+    const testo = [r.titolo + '.', r.porzioni, 'Ingredienti: ' + righe(r.ingredienti).join('; ') + '.', 'Come si fa.', ...righe(r.passi).map((x, k) => `${k + 1}. ${x}`), r.consiglio ? 'Il consiglio: ' + r.consiglio : ''].filter(Boolean).join(' ');
+    const u = new SpeechSynthesisUtterance(testo); u.lang = 'it-IT'; const v = vocePerItaliano(); if (v) u.voice = v;
+    u.onend = u.onerror = () => { b.classList.remove('attivo'); b.lastChild.textContent = 'Leggimela'; };
+    b.classList.add('attivo'); b.lastChild.textContent = 'Ferma';
+    speechSynthesis.speak(u);
+  });
+  app.querySelectorAll('[data-modifica-ricetta]').forEach((b) => b.onclick = async () => {
+    const r = S.ricette.find((x) => x.id === b.dataset.modificaRicetta);
+    const esito = await modificaRicetta(r);
+    if (esito === 'eliminata') { location.hash = '#/ricette'; return; }
+    if (esito) ridisegna();
+  });
+}
+
+async function vistaPasto(id) {
+  const [{ data: p }] = await Promise.all([sb.from('tav_pasti').select('*').eq('id', id).maybeSingle(), caricaRicette()]);
+  if (!p) { location.hash = '#/oggi'; return; }
+  const { data: ingr } = await sb.from('tav_ingredienti').select('*').eq('pasto_id', id).order('ordine');
+  const trovate = ricettePer(p.testo);
+  pagina(S.prima.replace(/^#\/?/, '').split('?')[0] || 'oggi', `
+    ${testata(maiuscola(NOME_MOMENTO[p.momento]), maiuscola(dataMedia(p.giorno)), { indietro: S.prima })}
+    <section class="pasto-testa">
+      <p class="piatto-grande">${esc(p.testo)}</p>
+      ${p.note ? `<p class="tenue">${esc(p.note)}</p>` : ''}
+      <div class="azioni"><button class="btn piccolo${p.fatto ? ' secondario' : ''}" id="fatto">${p.fatto ? 'Fatto, annulla' : 'Segna come fatto'}</button>
+        <button class="btn secondario piccolo" id="modifica-pasto">${ICONE.matita}Modifica il pasto</button></div>
+      ${(ingr || []).length ? `<details class="ingr-pasto"><summary>Cosa serve per questo pasto (${ingr.length})</summary><ul>${ingr.map((i) => `<li>${esc(i.nome)}${i.quantita ? ` <span class="tenue">· ${esc(i.quantita)}</span>` : ''}</li>`).join('')}</ul></details>` : ''}
+    </section>
+    ${trovate.length
+      ? `${trovate.length > 1 ? `<p class="aiuto">In questo pasto ci sono ${trovate.length} preparazioni: le trovi una sotto l'altra.</p>` : ''}${trovate.map((r) => schedaRicetta(r, { titoloPiccolo: true })).join('')}`
+      : `<div class="blocco zucca"><h3>Non c'è ancora una ricetta per questo piatto</h3><p>Puoi farla scrivere a Claude oppure scriverla tu: resterà nel ricettario di famiglia.</p>
+        <div class="azioni"><a class="btn" href="#/chiedi?q=${encodeURIComponent(`Come si prepara "${p.testo}"? Dammi dosi per 2 (la mia porzione a parte) e i passaggi.`)}">Chiedi a Claude</a><button class="btn secondario" id="scrivi-ricetta">Scrivi la ricetta</button></div></div>`}
+    ${FIRMA}`);
+  document.getElementById('fatto').onclick = async () => { const { error } = await sb.from('tav_pasti').update({ fatto: !p.fatto }).eq('id', p.id); if (error) return errore(error); vistaPasto(id); };
+  document.getElementById('modifica-pasto').onclick = async () => { const r = await modificaPasto(p); if (r) { const { data: c } = await sb.from('tav_pasti').select('id').eq('id', id).maybeSingle(); if (c) vistaPasto(id); else location.hash = S.prima; } };
+  const sr = document.getElementById('scrivi-ricetta');
+  if (sr) sr.onclick = async () => { if (await modificaRicetta({ titolo: p.testo.split(/,\s*poi\s+|[,;]/i)[0].slice(0, 120), categoria: p.momento === 'colazione' ? 'Colazioni e dolci' : SPUNTINI.has(p.momento) ? 'Spuntini' : p.momento === 'pranzo' ? 'Pranzi da portare' : 'Piatti unici', parole: [normale(p.testo).split(/,|;| poi /)[0]] })) vistaPasto(id); };
+  collegaSchede(() => vistaPasto(id));
+}
+
+async function vistaRicette(param = {}) {
+  await caricaRicette();
+  const g = oggi();
+  const { data: pasti } = await sb.from('tav_pasti').select('id, giorno, momento, testo').gte('giorno', g).lte('giorno', piuGiorni(g, 6));
+  const prossime = new Map();
+  (pasti || []).sort((a, b) => a.giorno.localeCompare(b.giorno) || ORDINE_MOMENTO[a.momento] - ORDINE_MOMENTO[b.momento])
+    .filter((p) => !SPUNTINI.has(p.momento) && p.momento !== 'dopo_cena')
+    .forEach((p) => ricettePer(p.testo).forEach((r) => { if (!prossime.has(r.id)) prossime.set(r.id, { r, p }); }));
+  const cerca = (param.cerca || '').trim();
+  const filtro = (r) => !cerca || normale([r.titolo, r.ingredienti, r.categoria].join(' ')).includes(normale(cerca));
+  const elenco = S.ricette.filter(filtro);
+  const voce = (r, sotto = '') => `<li><a href="#/ricetta?id=${r.id}"><span class="nome"><b>${esc(r.titolo)}</b>${sotto ? `<small>${sotto}</small>` : ''}</span><span class="tempo">${r.tempo_min ? `${r.tempo_min} min` : ''} ›</span></a></li>`;
+  pagina('ricette', `
+    ${testata('Ricette', 'Come si preparano i piatti')}
+    <form class="cerca" id="f-cerca" role="search"><input type="search" name="cerca" value="${esc(cerca)}" placeholder="Cerca: zucca, pollo, colazione…" aria-label="Cerca una ricetta"></form>
+    ${!cerca && prossime.size ? `<h2>Nei prossimi giorni</h2><ul class="elenco-ricette">${[...prossime.values()].slice(0, 12).map(({ r, p }) => voce(r, `${maiuscola(dataBreve(p.giorno))} · ${NOME_MOMENTO[p.momento].toLowerCase()}`)).join('')}</ul>` : ''}
+    ${CATEGORIE.concat([...new Set(elenco.map((r) => r.categoria))].filter((c) => !CATEGORIE.includes(c))).map((c) => {
+      const qui = elenco.filter((r) => r.categoria === c);
+      return qui.length ? `<h2>${esc(c)}</h2><ul class="elenco-ricette">${qui.map((r) => voce(r)).join('')}</ul>` : '';
+    }).join('')}
+    ${elenco.length ? '' : `<div class="blocco vuoto-stato"><p>Nessuna ricetta trovata${cerca ? ` per "${esc(cerca)}"` : ''}.</p></div>`}
+    <p class="azioni" style="justify-content:center;margin-top:16px"><button class="btn" id="nuova">Aggiungi una ricetta</button></p>
+    ${FIRMA}`);
+  const f = document.getElementById('f-cerca');
+  let t; f.cerca.oninput = () => { clearTimeout(t); t = setTimeout(() => { const v = f.cerca.value; history.replaceState(null, '', v ? `#/ricette?cerca=${encodeURIComponent(v)}` : '#/ricette'); vistaRicette({ cerca: v }).then(() => { const i = document.querySelector('#f-cerca input'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }); }, 300); };
+  f.onsubmit = (e) => e.preventDefault();
+  document.getElementById('nuova').onclick = async () => { if (await modificaRicetta({})) vistaRicette(param); };
+}
+
+async function vistaRicetta(id) {
+  await caricaRicette();
+  const r = S.ricette.find((x) => x.id === id);
+  if (!r) { location.hash = '#/ricette'; return; }
+  const g = oggi();
+  const { data: pasti } = await sb.from('tav_pasti').select('id, giorno, momento, testo').gte('giorno', g).lte('giorno', piuGiorni(g, 13)).order('giorno');
+  const quando = (pasti || []).filter((p) => ricettePer(p.testo).some((x) => x.id === id));
+  pagina('ricette', `
+    ${testata(esc(r.titolo), 'Ricetta', { indietro: S.prima.startsWith('#/ricette') ? S.prima : '#/ricette' })}
+    ${quando.length ? `<p class="aiuto">Nel menu: ${quando.slice(0, 4).map((p) => `<a href="#/pasto?id=${p.id}">${dataMedia(p.giorno)} a ${NOME_MOMENTO[p.momento].toLowerCase()}</a>`).join(', ')}</p>` : ''}
+    ${schedaRicetta(r)}
+    ${FIRMA}`);
+  collegaSchede(() => vistaRicetta(id));
+}
+
+async function modificaRicetta(r) {
+  const nuova = !r.id;
+  const v = await finestra(`
+    <h2>${nuova ? 'Nuova ricetta' : 'Modifica la ricetta'}</h2>
+    <label class="campo">Nome del piatto<input type="text" name="titolo" value="${esc(r.titolo || '')}" required maxlength="120"></label>
+    <div class="riga-campi">
+      <label class="campo">Tipo<select name="categoria">${CATEGORIE.map((c) => `<option${c === (r.categoria || 'Piatti unici') ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
+      <label class="campo">Minuti<input type="number" name="tempo_min" min="0" max="600" inputmode="numeric" value="${r.tempo_min ?? ''}"></label>
+    </div>
+    <label class="campo">Porzioni <small>per esempio "Per 2. La tua porzione: 70 g di pasta"</small><input type="text" name="porzioni" value="${esc(r.porzioni || '')}" maxlength="200"></label>
+    <label class="campo">Ingredienti <small>uno per riga</small><textarea name="ingredienti" rows="6" maxlength="3000">${esc(r.ingredienti || '')}</textarea></label>
+    <label class="campo">Come si fa <small>un passaggio per riga</small><textarea name="passi" rows="7" maxlength="6000">${esc(r.passi || '')}</textarea></label>
+    <label class="campo">Il consiglio <small>facoltativo</small><textarea name="consiglio" rows="2" maxlength="1500">${esc(r.consiglio || '')}</textarea></label>
+    <label class="campo">Parole che la collegano al menu <small>separate da virgola: quando un pasto contiene una di queste parole, toccandolo si apre questa ricetta</small><input type="text" name="parole" value="${esc((r.parole || []).join(', '))}" maxlength="300"></label>
+    <div class="azioni">${nuova ? '' : '<button class="btn elimina" value="elimina" formnovalidate>Elimina</button>'}
+      <button class="btn secondario" value="annulla" formnovalidate>Annulla</button><button class="btn" value="salva">Salva</button></div>`);
+  if (!v) return false;
+  if (v.azione === 'elimina') {
+    if (!(await conferma(`Eliminare la ricetta "${r.titolo}"?`, 'Elimina'))) return false;
+    const { error } = await sb.from('tav_ricette').delete().eq('id', r.id);
+    if (error) { errore(error); return false; }
+    await caricaRicette(true); avviso('Ricetta eliminata'); return 'eliminata';
+  }
+  const dati = { titolo: v.titolo.trim(), categoria: v.categoria, tempo_min: v.tempo_min ? Number(v.tempo_min) : null, porzioni: v.porzioni.trim() || null,
+    ingredienti: v.ingredienti.trim() || null, passi: v.passi.trim() || null, consiglio: v.consiglio.trim() || null,
+    parole: v.parole.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean), updated_at: new Date().toISOString() };
+  const { error } = nuova
+    ? await sb.from('tav_ricette').insert({ ...dati, famiglia_id: S.me.famiglia_id, created_by: S.me.user_id })
+    : await sb.from('tav_ricette').update(dati).eq('id', r.id);
+  if (error) { errore(error); return false; }
+  await caricaRicette(true);
+  avviso(nuova ? 'Ricetta aggiunta' : 'Ricetta salvata');
+  return true;
+}
+
 // ---------------------------------------------------------------- IO
 async function vistaIo() {
   const { data: pesate } = await sb.from('tav_pesate').select('*').eq('user_id', S.me.user_id).order('giorno').order('created_at');
@@ -942,6 +1118,8 @@ function vistaGuida() {
       <p>In "Io" tocca "Aggiungi al calendario" e conferma l'iscrizione. Il calendario del telefono ti avvisa da solo:</p>
       <ul><li>alle 7:00 con il menu di oggi;</li><li>alle 20:30 con il menu di domani e le cose che mancano da comprare.</li></ul>
       <p>Su iPhone: Impostazioni › Calendario › Account, controlla che il calendario "A tavola" sia attivo e che le notifiche del Calendario siano accese. Il telefono aggiorna il calendario da solo ogni qualche ora.</p>
+      <h2>Ricette</h2>
+      <p>Tocca un pasto in Oggi o in Settimana e si apre la sua scheda con la ricetta: dosi per due con la tua porzione indicata, i passaggi uno per uno e un consiglio. Se in un pasto ci sono più preparazioni, le trovi una sotto l'altra. Con "Leggimela" il telefono te la legge mentre cucini. Nella sezione Ricette c'è tutto il ricettario, con la ricerca. Puoi modificare le ricette o aggiungerne di nuove: nella casella "Parole che la collegano al menu" scrivi le parole del piatto, così si apre da sola dal menu. Per modificare il pasto, aprilo e tocca "Modifica il pasto".</p>
       <h2>Chiedi a Claude</h2>
       <p>Chiedi se puoi sostituire un alimento, quanto mangiarne, cosa portare al lavoro, cosa mangiare dopo lo sport o se un prodotto va bene. Claude vede il menu di famiglia, il tuo profilo, le preferenze, gli ultimi pesi e le attività. Parla solo di alimentazione, spesa e benessere: per il resto risponde che non è la persona giusta. Non sostituisce il medico.</p>
       <p><b>A voce:</b> tocca il microfono accanto alla casella e parla. Quando smetti, la domanda parte da sola e la risposta viene letta ad alta voce. Su ogni risposta c'è anche il tasto "Ascolta". La voce è gratis: la fa il telefono. La prima volta il browser chiede il permesso di usare il microfono.</p>
@@ -973,6 +1151,7 @@ async function mostra() {
   if (!S.me) return vistaUnisciti();
   const [percorso, query] = (location.hash.replace(/^#\/?/, '') || 'oggi').split('?');
   const param = Object.fromEntries(new URLSearchParams(query || ''));
+  if (!['pasto', 'ricetta'].includes(percorso)) S.prima = location.hash || '#/oggi';
   try {
     switch (percorso) {
       case 'settimana': return await vistaSettimana();
@@ -982,6 +1161,9 @@ async function mostra() {
       case 'sport': return await vistaSport();
       case 'famiglia': return await vistaFamiglia();
       case 'guida': return vistaGuida();
+      case 'ricette': return await vistaRicette(param);
+      case 'ricetta': return await vistaRicetta(param.id);
+      case 'pasto': return await vistaPasto(param.id);
       default: return await vistaOggi();
     }
   } catch (e) { errore(e); }

@@ -55,8 +55,8 @@ p { margin: 0 0 10px; }
 
 /* ---------- barra in basso ---------- */
 .barra { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--foglio); border-top: 1px solid var(--linea); padding-bottom: env(safe-area-inset-bottom); }
-.barra ul { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: repeat(5, 1fr); max-width: 760px; }
-.barra a { display: grid; justify-items: center; gap: 2px; padding: 9px 0 8px; text-decoration: none; color: var(--inchiostro-3); font-size: 12.5px; font-weight: 700; }
+.barra ul { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); max-width: 760px; }
+.barra a { display: grid; justify-items: center; gap: 2px; padding: 9px 0 8px; text-decoration: none; color: var(--inchiostro-3); font-size: 12px; font-weight: 700; }
 .barra svg { width: 26px; height: 26px; }
 .barra a[aria-current="page"] { color: var(--basilico-scuro); }
 .barra a[aria-current="page"] svg .piatto { fill: var(--germoglio); }
@@ -264,3 +264,33 @@ dialog .elimina { margin-right: auto; color: var(--rischio); border-color: #F1C9
 .due.quattro .blocco { margin-bottom: 0; }
 .due.quattro + .blocco, .due.quattro + .azioni { margin-top: 12px; }
 @media (max-width: 380px) { .due.quattro .numero { font-size: 28px; } }
+
+/* ---------- ricette ---------- */
+.stasera .btn svg { width: 20px; height: 20px; }
+.ha-ricetta { display: block; margin-top: 4px; font-size: 14px; font-weight: 700; color: var(--basilico); }
+.cerca input { width: 100%; border-radius: 99px; padding: 12px 18px; margin-bottom: 4px; }
+.elenco-ricette { list-style: none; margin: 0; padding: 0; background: var(--foglio); border: 1px solid var(--linea); border-radius: 18px; overflow: hidden; }
+.elenco-ricette li + li { border-top: 1px solid var(--linea); }
+.elenco-ricette a { display: flex; align-items: center; gap: 12px; padding: 13px 16px; text-decoration: none; color: inherit; min-height: 52px; }
+.elenco-ricette .nome { flex: 1; display: grid; gap: 2px; }
+.elenco-ricette .nome small { color: var(--inchiostro-3); font-size: 14px; }
+.elenco-ricette .tempo { color: var(--inchiostro-3); font-size: 14px; white-space: nowrap; }
+.pasto-testa { background: var(--foglio); border: 1px solid var(--linea); border-radius: 24px; padding: 18px; margin-bottom: 8px; }
+.pasto-testa .piatto-grande { font: 800 clamp(22px, 6vw, 30px)/1.15 var(--display); letter-spacing: -0.015em; margin: 0 0 12px; text-wrap: balance; }
+.pasto-testa .azioni, .ricetta .azioni { display: flex; gap: 8px; flex-wrap: wrap; }
+.ingr-pasto { margin-top: 12px; }
+.ingr-pasto summary { cursor: pointer; font-weight: 700; color: var(--basilico-scuro); padding: 6px 0; }
+.ingr-pasto ul { margin: 6px 0 0; padding-left: 20px; }
+.ricetta { background: var(--foglio); border: 1px solid var(--linea); border-radius: 24px; padding: 18px 18px 16px; margin: 16px 0; }
+.ricetta h2 { margin: 0 0 6px; }
+.ricetta h3 { font: 800 18px var(--display); margin: 18px 0 8px; color: var(--basilico-scuro); }
+.ricetta-meta { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 6px; color: var(--inchiostro-3); font-size: 15px; }
+.ricetta-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.ricetta-porzioni { margin: 0; padding: 10px 12px; background: var(--carta); border-radius: 12px; font-weight: 700; }
+.ricetta-ingredienti { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.ricetta-passi { margin: 0; padding: 0; list-style: none; counter-reset: passo; display: grid; gap: 12px; }
+.ricetta-passi li { counter-increment: passo; position: relative; padding-left: 40px; line-height: 1.45; }
+.ricetta-passi li::before { content: counter(passo); position: absolute; left: 0; top: -1px; width: 28px; height: 28px; border-radius: 50%; background: var(--germoglio); color: var(--basilico-scuro); font: 800 15px/28px var(--display); text-align: center; }
+.ricetta .consiglio { margin: 16px 0 12px; }
+.ricetta .btn.attivo { background: var(--basilico); color: #fff; }
+.stasera .sostituzione { margin: 12px 0 0; font-size: 15px; } .stasera .sostituzione a { color: #E2F0DC; font-weight: 700; }
