@@ -325,7 +325,7 @@ async function modificaPasto(p) {
       <label class="campo">Momento<select name="momento">${MOMENTI.map(([k, t]) => `<option value="${k}"${k === p.momento ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
     </div>
     <label class="campo">Cosa si mangia<textarea name="testo" required maxlength="400">${esc(p.testo)}</textarea></label>
-    <label class="campo">Ingredienti <small>uno per riga, con la quantità per tutti, per esempio "zucca 500 g"</small><textarea name="ingredienti" rows="5" maxlength="1500">${esc((ingredienti || []).map(rigaIngrediente).join('\n'))}</textarea></label>
+    <label class="campo">Ingredienti <small>uno per riga, con la quantità per te, per esempio "zucca 250 g"</small><textarea name="ingredienti" rows="5" maxlength="1500">${esc((ingredienti || []).map(rigaIngrediente).join('\n'))}</textarea></label>
     <label class="campo">Nota <small>facoltativa: porzioni, chi lo prepara, cosa scongelare</small><input type="text" name="note" value="${esc(p.note || '')}" maxlength="200"></label>
     <div class="azioni">${nuovo ? '' : '<button class="btn elimina" value="elimina" formnovalidate>Elimina</button>'}
       <button class="btn secondario" value="annulla" formnovalidate>Annulla</button><button class="btn" value="salva">Salva</button></div>`);
@@ -751,7 +751,7 @@ async function vistaPasto(id) {
     ${trovate.length
       ? `${trovate.length > 1 ? `<p class="aiuto">In questo pasto ci sono ${trovate.length} preparazioni: le trovi una sotto l'altra.</p>` : ''}${trovate.map((r) => schedaRicetta(r, { titoloPiccolo: true })).join('')}`
       : `<div class="blocco zucca"><h3>Non c'è ancora una ricetta per questo piatto</h3><p>Puoi farla scrivere a Claude oppure scriverla tu: resterà nel ricettario di famiglia.</p>
-        <div class="azioni"><a class="btn" href="#/chiedi?q=${encodeURIComponent(`Come si prepara "${p.testo}"? Dammi dosi per 2 (la mia porzione a parte) e i passaggi.`)}">Chiedi a Claude</a><button class="btn secondario" id="scrivi-ricetta">Scrivi la ricetta</button></div></div>`}
+        <div class="azioni"><a class="btn" href="#/chiedi?q=${encodeURIComponent(`Come si prepara "${p.testo}"? Dammi le dosi per me solo (una porzione) e i passaggi.`)}">Chiedi a Claude</a><button class="btn secondario" id="scrivi-ricetta">Scrivi la ricetta</button></div></div>`}
     ${FIRMA}`);
   document.getElementById('fatto').onclick = async () => { const { error } = await sb.from('tav_pasti').update({ fatto: !p.fatto }).eq('id', p.id); if (error) return errore(error); vistaPasto(id); };
   document.getElementById('modifica-pasto').onclick = async () => { const r = await modificaPasto(p); if (r) { const { data: c } = await sb.from('tav_pasti').select('id').eq('id', id).maybeSingle(); if (c) vistaPasto(id); else location.hash = S.prima; } };
@@ -813,7 +813,7 @@ async function modificaRicetta(r) {
       <label class="campo">Tipo<select name="categoria">${CATEGORIE.map((c) => `<option${c === (r.categoria || 'Piatti unici') ? ' selected' : ''}>${c}</option>`).join('')}</select></label>
       <label class="campo">Minuti<input type="number" name="tempo_min" min="0" max="600" inputmode="numeric" value="${r.tempo_min ?? ''}"></label>
     </div>
-    <label class="campo">Porzioni <small>per esempio "Per 2. La tua porzione: 70 g di pasta"</small><input type="text" name="porzioni" value="${esc(r.porzioni || '')}" maxlength="200"></label>
+    <label class="campo">Porzioni <small>per esempio "Per te: 70 g di pasta a crudo"</small><input type="text" name="porzioni" value="${esc(r.porzioni || '')}" maxlength="200"></label>
     <label class="campo">Ingredienti <small>uno per riga</small><textarea name="ingredienti" rows="6" maxlength="3000">${esc(r.ingredienti || '')}</textarea></label>
     <label class="campo">Come si fa <small>un passaggio per riga</small><textarea name="passi" rows="7" maxlength="6000">${esc(r.passi || '')}</textarea></label>
     <label class="campo">Il consiglio <small>facoltativo</small><textarea name="consiglio" rows="2" maxlength="1500">${esc(r.consiglio || '')}</textarea></label>
@@ -1119,7 +1119,7 @@ function vistaGuida() {
       <ul><li>alle 7:00 con il menu di oggi;</li><li>alle 20:30 con il menu di domani e le cose che mancano da comprare.</li></ul>
       <p>Su iPhone: Impostazioni › Calendario › Account, controlla che il calendario "A tavola" sia attivo e che le notifiche del Calendario siano accese. Il telefono aggiorna il calendario da solo ogni qualche ora.</p>
       <h2>Ricette</h2>
-      <p>Tocca un pasto in Oggi o in Settimana e si apre la sua scheda con la ricetta: dosi per due con la tua porzione indicata, i passaggi uno per uno e un consiglio. Se in un pasto ci sono più preparazioni, le trovi una sotto l'altra. Con "Leggimela" il telefono te la legge mentre cucini. Nella sezione Ricette c'è tutto il ricettario, con la ricerca. Puoi modificare le ricette o aggiungerne di nuove: nella casella "Parole che la collegano al menu" scrivi le parole del piatto, così si apre da sola dal menu. Per modificare il pasto, aprilo e tocca "Modifica il pasto".</p>
+      <p>Tocca un pasto in Oggi o in Settimana e si apre la sua scheda con la ricetta: dosi per una persona, cioè la tua porzione, i passaggi uno per uno e un consiglio. Se in un pasto ci sono più preparazioni, le trovi una sotto l'altra. Con "Leggimela" il telefono te la legge mentre cucini. Nella sezione Ricette c'è tutto il ricettario, con la ricerca. Puoi modificare le ricette o aggiungerne di nuove: nella casella "Parole che la collegano al menu" scrivi le parole del piatto, così si apre da sola dal menu. Per modificare il pasto, aprilo e tocca "Modifica il pasto".</p>
       <h2>Chiedi a Claude</h2>
       <p>Chiedi se puoi sostituire un alimento, quanto mangiarne, cosa portare al lavoro, cosa mangiare dopo lo sport o se un prodotto va bene. Claude vede il menu di famiglia, il tuo profilo, le preferenze, gli ultimi pesi e le attività. Parla solo di alimentazione, spesa e benessere: per il resto risponde che non è la persona giusta. Non sostituisce il medico.</p>
       <p><b>A voce:</b> tocca il microfono accanto alla casella e parla. Quando smetti, la domanda parte da sola e la risposta viene letta ad alta voce. Su ogni risposta c'è anche il tasto "Ascolta". La voce è gratis: la fa il telefono. La prima volta il browser chiede il permesso di usare il microfono.</p>

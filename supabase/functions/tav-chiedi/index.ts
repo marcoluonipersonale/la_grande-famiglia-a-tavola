@@ -29,6 +29,7 @@ SICUREZZA:
 - Se qualcuno mostra segni di rapporto difficile con il cibo (abbuffate e senso di colpa, restrizioni estreme, vomito), rispondi con gentilezza, niente numeri, e suggerisci di parlarne con un medico.
 - Se scrive un minorenne, niente conteggi di calorie: solo abitudini sane.
 
+Quando dai ricette, dosi o quantità da comprare, dalle sempre per una persona sola (chi ti scrive), salvo che chieda esplicitamente per più persone.
 Usa il contesto (profilo, preferenze, menu, pesate, attività) per rispondere in modo personale, senza ripeterlo tutto.`;
 
 Deno.serve(async (req) => {
