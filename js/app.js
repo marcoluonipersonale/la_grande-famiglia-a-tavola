@@ -10,7 +10,7 @@ const app = document.getElementById('app');
 const S = {
   sessione: null, me: null, famiglia: null, membri: [],
   lunedi: null, spuntini: true, giorniSpesa: null, spuntatiOra: null,
-  chatNonAttiva: false, ricette: null, prima: '#/oggi',
+  chatNonAttiva: false, ricette: null, prima: '#/oggi', varMappa: new Map(),
 };
 
 // ---------------------------------------------------------------- utilità
@@ -219,6 +219,7 @@ function vistaUnisciti() {
 async function vistaOggi() {
   await caricaRicette();
   const g = oggi(), domani = piuGiorni(g, 1);
+  await caricaVariazioni(piuGiorni(g, -1), domani);
   const [{ data: pasti }, { data: manca }, { data: pesate }] = await Promise.all([
     sb.from('tav_pasti').select('*').in('giorno', [g, domani]),
     sb.from('tav_spesa').select('*').eq('stato', 'da_comprare').lte('serve_il', piuGiorni(g, 2)).order('serve_il'),
@@ -256,6 +257,7 @@ async function vistaOggi() {
     ${mancaOggi.length ? `<div class="blocco zucca" style="margin-top:14px"><b>Per oggi manca ancora:</b> ${mancaOggi.map((m) => esc(m.nome)).join(', ')}. <a href="#/spesa">Apri la spesa</a></div>` : ''}
     <h2>La giornata</h2>
     ${diOggi.length ? tabellaGiorno(diOggi, true) : `<div class="blocco vuoto-stato"><p>Nessun pasto in programma per oggi.</p><a class="btn" href="#/settimana">Apri la settimana</a></div>`}
+    <p class="variazione-link"><button class="btn vuoto piccolo" id="variazione">${ICONE.matita}Hai mangiato qualcosa di diverso? Scrivilo</button></p>
     <h2>Domani</h2>
     <div class="blocco">
       ${cenaDomani ? `<p style="margin:0 0 6px"><b>Cena:</b> ${esc(cenaDomani.testo)}</p>` : '<p class="tenue">Il menu di domani è ancora vuoto.</p>'}
@@ -276,6 +278,7 @@ async function vistaOggi() {
     vistaOggi();
   });
   const bp = document.getElementById('pesati'); if (bp) bp.onclick = () => nuovaPesata(vistaOggi);
+  document.getElementById('variazione').onclick = () => nuovaVariazione({}, vistaOggi);
 }
 function variazione(d, dopo) {
   if (!d) return `<p class="variazione tenue">stabile ${dopo}</p>`;
@@ -289,7 +292,7 @@ function tabellaGiorno(pasti, conSpuntini = S.spuntini, giorno = null) {
   return `<table class="tavola"><tbody>${righe.map((p) => `
     <tr class="${p.fatto ? 'fatto ' : ''}${SPUNTINI.has(p.momento) ? 'spuntino ' : ''}${p.momento === 'cena' ? 'cena' : ''}">
       <th scope="row">${NOME_MOMENTO[p.momento]}</th>
-      <td class="testo-pasto" data-modifica="${p.id}" tabindex="0" role="button" aria-label="Apri ${NOME_MOMENTO[p.momento]}: come si prepara">${esc(p.testo)}${p.note ? `<br><small class="tenue">${esc(p.note)}</small>` : ''}${ricettePer(p.testo).length ? '<span class="ha-ricetta">Come si prepara ›</span>' : ''}</td>
+      <td class="testo-pasto" data-modifica="${p.id}" tabindex="0" role="button" aria-label="Apri ${NOME_MOMENTO[p.momento]}: come si prepara">${esc(p.testo)}${p.note ? `<br><small class="tenue">${esc(p.note)}</small>` : ''}${S.varMappa.get(`${p.giorno}|${p.momento}`) ? `<span class="variato">Hai mangiato invece: ${esc(S.varMappa.get(`${p.giorno}|${p.momento}`).map((v) => v.testo).join('; '))}</span>` : ricettePer(p.testo).length ? '<span class="ha-ricetta">Come si prepara ›</span>' : ''}</td>
       <td class="cella-spunta"><input type="checkbox" class="spunta" data-spunta="${p.id}" ${p.fatto ? 'checked' : ''} aria-label="Fatto: ${NOME_MOMENTO[p.momento]}"></td>
     </tr>`).join('')}</tbody></table>`;
 }
@@ -354,6 +357,7 @@ async function modificaPasto(p) {
 // ---------------------------------------------------------------- SETTIMANA
 async function vistaSettimana() {
   await caricaRicette();
+  { const l = S.lunedi || lunediDi(oggi()); await caricaVariazioni(piuGiorni(l, -7), piuGiorni(l, 13)); }
   // la domenica il menu che conta è quello della settimana che parte domani
   if (!S.lunedi) S.lunedi = daYmd(oggi()).getDay() === 0 ? piuGiorni(oggi(), 1) : lunediDi(oggi());
   const lun = S.lunedi, dom = piuGiorni(lun, 6);
@@ -588,8 +592,9 @@ async function vistaChiedi(param = {}) {
     ${messaggi.length ? '' : `<div class="blocco verde"><p style="margin:0">Chiedi se puoi sostituire un alimento, quanto mangiarne, cosa portare al lavoro o quanto mangiare dopo lo sport. Claude conosce il menu di famiglia, le tue preferenze e i tuoi progressi. Parla solo di alimentazione, spesa e benessere.</p></div>`}
     <div class="chat" id="chat">${messaggi.map(bolla).join('')}</div>
     <div class="suggerimenti">${SUGGERIMENTI.slice(0, messaggi.length ? 3 : 6).map((s) => `<button data-sugg="${esc(s)}">${esc(s)}</button>`).join('')}</div>
-    <form class="scrivi" id="f-chiedi"><textarea name="domanda" rows="1" placeholder="${Riconoscimento ? 'Scrivi o tocca il microfono' : 'Scrivi la tua domanda'}" aria-label="La tua domanda" required maxlength="2000">${esc(param.q || '')}</textarea>${Riconoscimento ? `<button type="button" class="btn vuoto mic" id="mic" aria-label="Parla">${ICONE.microfono}</button>` : ''}<button class="btn" id="invia" aria-label="Invia">${ICONE.invia}</button></form>
+    <form class="scrivi" id="f-chiedi"><textarea name="domanda" rows="1" placeholder="${haMicrofono ? 'Scrivi o tocca il microfono' : 'Scrivi la tua domanda'}" aria-label="La tua domanda" required maxlength="2000">${esc(param.q || '')}</textarea>${haMicrofono ? `<button type="button" class="btn vuoto mic" id="mic" aria-label="Parla">${ICONE.microfono}</button>` : ''}<button class="btn" id="invia" aria-label="Invia">${ICONE.invia}</button></form>
     <p class="voce-stato" id="voce-stato" hidden></p>
+    ${puoParlare ? '<label class="leggi-sempre"><input type="checkbox" id="leggi-sempre"> Leggimi le risposte ad alta voce</label>' : ''}
     ${messaggi.length ? '<p style="text-align:center"><button class="link-btn piccolo" id="pulisci">Cancella la conversazione</button></p>' : ''}
     ${FIRMA}`);
   const f = document.getElementById('f-chiedi'), ta = f.querySelector('textarea'), chat = document.getElementById('chat');
@@ -602,29 +607,14 @@ async function vistaChiedi(param = {}) {
   if (pl) pl.onclick = async () => { if (await conferma('Cancellare tutta la conversazione?', 'Cancella')) { await sb.from('tav_chat').delete().eq('user_id', S.me.user_id); vistaChiedi(); } };
   collegaAscolta(chat);
   let aVoce = false;
-  const mic = document.getElementById('mic'), stato = document.getElementById('voce-stato');
-  if (mic) {
-    let rec = null;
-    mic.onclick = () => {
-      if (rec) { rec.stop(); return; }
-      zitto();
-      rec = new Riconoscimento(); rec.lang = 'it-IT'; rec.interimResults = true; rec.continuous = false;
-      const prima = ta.value.trim();
-      mic.classList.add('ascolta'); stato.hidden = false; stato.textContent = 'Ti ascolto… parla pure';
-      rec.onresult = (ev) => { const t = Array.from(ev.results).map((r) => r[0].transcript).join(''); ta.value = (prima ? prima + ' ' : '') + t; adatta(); };
-      rec.onerror = (ev) => { stato.textContent = ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? 'Il microfono è bloccato: consentilo nelle impostazioni del browser per questo sito.' : ev.error === 'no-speech' ? 'Non ho sentito niente, riprova.' : 'Non riesco ad ascoltare adesso, riprova.'; };
-      rec.onend = () => {
-        mic.classList.remove('ascolta'); rec = null;
-        if (ta.value.trim() && ta.value.trim() !== prima) { stato.hidden = true; aVoce = true; f.requestSubmit(); }
-        else if (stato.textContent === 'Ti ascolto… parla pure') stato.hidden = true;
-      };
-      try { rec.start(); } catch { mic.classList.remove('ascolta'); rec = null; }
-    };
-  }
+  collegaMicrofono(document.getElementById('mic'), ta, document.getElementById('voce-stato'), { adatta, fine: () => { aVoce = true; f.requestSubmit(); } });
+  const cl = document.getElementById('leggi-sempre');
+  if (cl) { cl.checked = leggiSempre(); cl.onchange = () => { try { localStorage.setItem('tav-leggi', cl.checked ? '1' : '0'); } catch {} }; }
   f.onsubmit = async (e) => {
     e.preventDefault();
-    const leggi = aVoce; aVoce = false;
+    const leggi = (aVoce || leggiSempre()) && puoParlare; aVoce = false;
     const domanda = ta.value.trim(); if (!domanda) return;
+    if (leggi) sbloccaVoce();
     ta.value = ''; adatta();
     chat.insertAdjacentHTML('beforeend', bolla({ ruolo: 'user', testo: domanda }) + '<div class="msg assistant attesa" id="attesa">Claude ci sta pensando…</div>');
     document.getElementById('attesa').scrollIntoView({ block: 'end', behavior: 'smooth' });
@@ -639,8 +629,41 @@ async function vistaChiedi(param = {}) {
   };
 }
 // Voce: dettatura e lettura ad alta voce, gratis, fatte dal telefono (Web Speech API).
-const Riconoscimento = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const SU_IPHONE = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// su iPhone/iPad (soprattutto dall'icona sulla Home) il riconoscimento del browser non funziona: si usa la dettatura della tastiera
+const Riconoscimento = SU_IPHONE ? null : (window.SpeechRecognition || window.webkitSpeechRecognition || null);
+const haMicrofono = SU_IPHONE || !!Riconoscimento;
 const puoParlare = 'speechSynthesis' in window;
+const leggiSempre = () => { try { return localStorage.getItem('tav-leggi') === '1'; } catch { return false; } };
+// iPhone fa parlare il telefono solo dopo un tocco: si "sblocca" la voce nel momento del tocco
+function sbloccaVoce() { try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch {} }
+function collegaMicrofono(mic, ta, stato, { adatta = () => {}, fine = null } = {}) {
+  if (!mic) return;
+  if (!Riconoscimento) {
+    mic.onclick = () => {
+      ta.focus();
+      stato.hidden = false;
+      stato.innerHTML = 'Tocca il <b>microfono della tastiera</b> (in basso, accanto alla barra spaziatrice) e parla. Quando hai finito tocca di nuovo la tastiera e poi la freccia per inviare.';
+    };
+    return;
+  }
+  let rec = null;
+  mic.onclick = () => {
+    if (rec) { rec.stop(); return; }
+    zitto();
+    rec = new Riconoscimento(); rec.lang = 'it-IT'; rec.interimResults = true; rec.continuous = false;
+    const prima = ta.value.trim();
+    mic.classList.add('ascolta'); stato.hidden = false; stato.textContent = 'Ti ascolto… parla pure';
+    rec.onresult = (ev) => { const t = Array.from(ev.results).map((r) => r[0].transcript).join(''); ta.value = (prima ? prima + ' ' : '') + t; adatta(); };
+    rec.onerror = (ev) => { stato.textContent = ev.error === 'not-allowed' || ev.error === 'service-not-allowed' ? 'Il microfono è bloccato: consentilo nelle impostazioni del browser per questo sito, oppure usa il microfono della tastiera.' : ev.error === 'no-speech' ? 'Non ho sentito niente, riprova.' : 'Non riesco ad ascoltare adesso: usa il microfono della tastiera.'; };
+    rec.onend = () => {
+      mic.classList.remove('ascolta'); rec = null;
+      if (ta.value.trim() && ta.value.trim() !== prima) { stato.hidden = true; if (fine) fine(); }
+      else if (stato.textContent === 'Ti ascolto… parla pure') stato.hidden = true;
+    };
+    try { rec.start(); } catch { mic.classList.remove('ascolta'); rec = null; stato.textContent = 'Non riesco ad ascoltare: usa il microfono della tastiera.'; }
+  };
+}
 function zitto() { if (puoParlare) speechSynthesis.cancel(); document.querySelectorAll('.ascolta-btn.attivo').forEach((b) => { b.classList.remove('attivo'); b.lastChild.textContent = 'Ascolta'; }); }
 function vocePerItaliano() { const v = speechSynthesis.getVoices().filter((x) => x.lang?.toLowerCase().startsWith('it')); return v.find((x) => /premium|enhanced|natural|google/i.test(x.name)) || v[0] || null; }
 function collegaAscolta(chat) {
@@ -664,6 +687,88 @@ function bolla(m) {
 function cartaNonAttiva() {
   return `<div class="blocco zucca"><h3>Chiedi a Claude non è ancora attivo</h3>
     <p>È l'unica parte a pagamento del sito: ogni risposta costa circa un centesimo di euro, pagato con una chiave API Anthropic. ${S.me.ruolo === 'admin' ? 'Per attivarlo segui i passi nella <a href="#/guida">guida</a>, alla voce "Attivare Chiedi a Claude".' : 'Chiedi a chi ha creato la famiglia di attivarlo.'}</p></div>`;
+}
+
+// ---------------------------------------------------------------- VARIAZIONI ("ho mangiato qualcosa di diverso")
+async function caricaVariazioni(da, a) {
+  const { data } = await sb.from('tav_variazioni').select('*').gte('giorno', da).lte('giorno', a).order('created_at');
+  S.varMappa = new Map();
+  (data || []).forEach((v) => { const k = `${v.giorno}|${v.momento}`; if (!S.varMappa.has(k)) S.varMappa.set(k, []); S.varMappa.get(k).push(v); });
+  S.varElenco = data || [];
+  return S.varMappa;
+}
+const kcal = (n) => (n == null || isNaN(n) ? '' : `${Math.round(Number(n))} kcal`);
+function schedaVariazione(v) {
+  const a = v.analisi || {};
+  const diff = Number(a.differenza);
+  return `<section class="blocco variazione-scheda" data-variazione="${v.id}">
+    <p class="tenue piccolo" style="margin:0">${maiuscola(dataMedia(v.giorno))} · ${NOME_MOMENTO[v.momento].toLowerCase()} · hai mangiato</p>
+    <p class="var-testo">${esc(v.testo)}</p>
+    ${a.kcal_mangiate != null ? `<p class="var-numeri"><b>Circa ${kcal(a.kcal_mangiate)}</b>${a.kcal_previste != null ? ` invece di ${kcal(a.kcal_previste)} previste` : ''}${!isNaN(diff) && a.kcal_previste != null ? ` <span class="${diff > 0 ? 'su' : 'giu'}">(${diff > 0 ? '+' : '−'}${Math.abs(Math.round(diff))})</span>` : ''}</p>` : ''}
+    ${a.bilancia ? `<p><b>Sulla bilancia:</b> ${esc(a.bilancia)}</p>` : ''}
+    ${a.commento ? `<p>${esc(a.commento)}</p>` : ''}
+    ${(a.aggiustamenti || []).length ? `<div class="var-aggiust"><b>Per compensare ti propongo:</b>${a.aggiustamenti.map((x, k) => `
+      <div class="aggiust"><p><b>${maiuscola(dataMedia(x.giorno))}, ${NOME_MOMENTO[x.momento]?.toLowerCase() || x.momento}:</b> ${esc(x.testo_nuovo)}${x.perche ? `<br><small class="tenue">${esc(x.perche)}</small>` : ''}</p>
+      ${x.applicato ? '<span class="stato-ingr preso">Applicato al menu</span>' : `<button class="btn piccolo" data-applica="${v.id}" data-k="${k}">Applica al menu</button>`}</div>`).join('')}</div>` : ''}
+    <p style="margin:8px 0 0"><button class="link-btn piccolo" data-togli-var="${v.id}">Cancella questa variazione</button></p>
+  </section>`;
+}
+function collegaVariazioni(ridisegna) {
+  app.querySelectorAll('[data-applica]').forEach((b) => b.onclick = async () => {
+    const v = (S.varElenco || []).find((x) => x.id === b.dataset.applica);
+    const x = v?.analisi?.aggiustamenti?.[Number(b.dataset.k)];
+    if (!x) return;
+    b.disabled = true;
+    const { error } = await sb.from('tav_pasti').update({ testo: x.testo_nuovo }).eq('giorno', x.giorno).eq('momento', x.momento);
+    if (error) { b.disabled = false; return errore(error); }
+    x.applicato = true;
+    avviso('Menu aggiornato'); ridisegna();
+  });
+  app.querySelectorAll('[data-togli-var]').forEach((b) => b.onclick = async () => {
+    if (!(await conferma('Cancellare questa variazione?', 'Cancella'))) return;
+    const { error } = await sb.from('tav_variazioni').delete().eq('id', b.dataset.togliVar);
+    if (error) return errore(error);
+    ridisegna();
+  });
+}
+async function nuovaVariazione({ giorno = null, momento = null, previsto = '' } = {}, ridisegna = () => {}) {
+  const g = oggi(), ieri = piuGiorni(g, -1);
+  const ora = new Date().getHours();
+  const momentoDef = momento || (ora < 10 ? 'colazione' : ora < 12 ? 'spuntino_mattina' : ora < 15 ? 'pranzo' : ora < 19 ? 'spuntino_pomeriggio' : ora < 22 ? 'cena' : 'dopo_cena');
+  const giorni = [...new Set([giorno, g, ieri].filter(Boolean))];
+  const r = await finestra(`
+    <h2>Hai mangiato qualcosa di diverso?</h2>
+    <p class="aiuto" style="margin-top:0">Scrivilo come lo diresti a voce, con le quantità se le sai. Per esempio: "invece della pizza una fetta di roast-beef senza grasso, insalata e un bicchiere di vino".</p>
+    <div class="riga-campi">
+      <label class="campo">Giorno<select name="giorno">${giorni.map((x) => `<option value="${x}"${x === (giorno || g) ? ' selected' : ''}>${x === g ? 'Oggi' : x === ieri ? 'Ieri' : maiuscola(dataMedia(x))}</option>`).join('')}</select></label>
+      <label class="campo">Pasto<select name="momento">${MOMENTI.map(([k, t]) => `<option value="${k}"${k === momentoDef ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+    </div>
+    ${previsto ? `<p class="tenue piccolo">Nel menu c'era: ${esc(previsto)}</p>` : ''}
+    <label class="campo">Cosa hai mangiato
+      <div class="con-mic"><textarea name="testo" rows="3" required maxlength="1000" placeholder="Scrivi o detta"></textarea>${haMicrofono ? `<button type="button" class="btn vuoto mic" id="mic-var" aria-label="Detta">${ICONE.microfono}</button>` : ''}</div></label>
+    <p class="voce-stato" id="stato-var" hidden></p>
+    <div class="azioni"><button class="btn secondario" value="annulla" formnovalidate>Annulla</button><button class="btn" value="salva">Calcola</button></div>`,
+    { onApri: (d) => collegaMicrofono(d.querySelector('#mic-var'), d.querySelector('textarea'), d.querySelector('#stato-var')) });
+  if (!r) return;
+  const attesa = document.createElement('div'); attesa.className = 'velo'; attesa.innerHTML = '<div class="velo-box">Claude sta facendo i conti…</div>';
+  document.body.appendChild(attesa);
+  const res = await chiama('tav-variazione', { giorno: r.giorno, momento: r.momento, testo: r.testo.trim() });
+  attesa.remove();
+  if (res.status === 503 && res.dati.errore === 'non_attivo') return avviso('Chiedi a Claude non è attivo: la variazione non è stata calcolata.');
+  if (!res.ok) return errore({ message: res.dati.errore || 'Non riesco a calcolare adesso, riprova.' });
+  const v = res.dati.variazione;
+  S.varElenco = [...(S.varElenco || []), v];
+  const k = `${v.giorno}|${v.momento}`; if (!S.varMappa.has(k)) S.varMappa.set(k, []); S.varMappa.get(k).push(v);
+  await finestra(`<h2>Fatto, ecco i conti</h2>${schedaVariazione(v)}<div class="azioni"><button class="btn" value="ok">Ok</button></div>`,
+    { onApri: (d) => { d.querySelector('[data-togli-var]')?.parentElement.remove(); d.querySelectorAll('[data-applica]').forEach((b) => b.onclick = async (e) => {
+      e.preventDefault();
+      const x = v.analisi.aggiustamenti[Number(b.dataset.k)];
+      b.disabled = true;
+      const { error } = await sb.from('tav_pasti').update({ testo: x.testo_nuovo }).eq('giorno', x.giorno).eq('momento', x.momento);
+      if (error) { b.disabled = false; return errore(error); }
+      x.applicato = true; b.outerHTML = '<span class="stato-ingr preso">Applicato al menu</span>';
+    }); } });
+  ridisegna();
 }
 
 // ---------------------------------------------------------------- RICETTE
@@ -739,6 +844,8 @@ async function vistaPasto(id) {
   if (!p) { location.hash = '#/oggi'; return; }
   const { data: ingr } = await sb.from('tav_ingredienti').select('*').eq('pasto_id', id).order('ordine');
   const trovate = ricettePer(p.testo);
+  await caricaVariazioni(p.giorno, p.giorno);
+  const mie = S.varMappa.get(`${p.giorno}|${p.momento}`) || [];
   pagina(S.prima.replace(/^#\/?/, '').split('?')[0] || 'oggi', `
     ${testata(maiuscola(NOME_MOMENTO[p.momento]), maiuscola(dataMedia(p.giorno)), { indietro: S.prima })}
     <section class="pasto-testa">
@@ -746,8 +853,10 @@ async function vistaPasto(id) {
       ${p.note ? `<p class="tenue">${esc(p.note)}</p>` : ''}
       <div class="azioni"><button class="btn piccolo${p.fatto ? ' secondario' : ''}" id="fatto">${p.fatto ? 'Fatto, annulla' : 'Segna come fatto'}</button>
         <button class="btn secondario piccolo" id="modifica-pasto">${ICONE.matita}Modifica il pasto</button></div>
+      <p style="margin:10px 0 0"><button class="btn vuoto piccolo" id="var-pasto">Ho mangiato qualcosa di diverso</button></p>
       ${(ingr || []).length ? `<details class="ingr-pasto"><summary>Cosa serve per questo pasto (${ingr.length})</summary><ul>${ingr.map((i) => `<li>${esc(i.nome)}${i.quantita ? ` <span class="tenue">· ${esc(i.quantita)}</span>` : ''}</li>`).join('')}</ul></details>` : ''}
     </section>
+    ${mie.map(schedaVariazione).join('')}
     ${trovate.length
       ? `${trovate.length > 1 ? `<p class="aiuto">In questo pasto ci sono ${trovate.length} preparazioni: le trovi una sotto l'altra.</p>` : ''}${trovate.map((r) => schedaRicetta(r, { titoloPiccolo: true })).join('')}`
       : `<div class="blocco zucca"><h3>Non c'è ancora una ricetta per questo piatto</h3><p>Puoi farla scrivere a Claude oppure scriverla tu: resterà nel ricettario di famiglia.</p>
@@ -758,6 +867,8 @@ async function vistaPasto(id) {
   const sr = document.getElementById('scrivi-ricetta');
   if (sr) sr.onclick = async () => { if (await modificaRicetta({ titolo: p.testo.split(/,\s*poi\s+|[,;]/i)[0].slice(0, 120), categoria: p.momento === 'colazione' ? 'Colazioni e dolci' : SPUNTINI.has(p.momento) ? 'Spuntini' : p.momento === 'pranzo' ? 'Pranzi da portare' : 'Piatti unici', parole: [normale(p.testo).split(/,|;| poi /)[0]] })) vistaPasto(id); };
   collegaSchede(() => vistaPasto(id));
+  document.getElementById('var-pasto').onclick = () => nuovaVariazione({ giorno: p.giorno, momento: p.momento, previsto: p.testo }, () => vistaPasto(id));
+  collegaVariazioni(() => vistaPasto(id));
 }
 
 async function vistaRicette(param = {}) {
@@ -1119,10 +1230,10 @@ function vistaGuida() {
       <ul><li>alle 7:00 con il menu di oggi;</li><li>alle 20:30 con il menu di domani e le cose che mancano da comprare.</li></ul>
       <p>Su iPhone: Impostazioni › Calendario › Account, controlla che il calendario "A tavola" sia attivo e che le notifiche del Calendario siano accese. Il telefono aggiorna il calendario da solo ogni qualche ora.</p>
       <h2>Ricette</h2>
-      <p>Tocca un pasto in Oggi o in Settimana e si apre la sua scheda con la ricetta: dosi per una persona, cioè la tua porzione, i passaggi uno per uno e un consiglio. Se in un pasto ci sono più preparazioni, le trovi una sotto l'altra. Con "Leggimela" il telefono te la legge mentre cucini. Nella sezione Ricette c'è tutto il ricettario, con la ricerca. Puoi modificare le ricette o aggiungerne di nuove: nella casella "Parole che la collegano al menu" scrivi le parole del piatto, così si apre da sola dal menu. Per modificare il pasto, aprilo e tocca "Modifica il pasto".</p>
+      <p>Tocca un pasto in Oggi o in Settimana e si apre la sua scheda con la ricetta: dosi per una persona, cioè la tua porzione, i passaggi uno per uno e un consiglio. Se in un pasto ci sono più preparazioni, le trovi una sotto l'altra. Con "Leggimela" il telefono te la legge mentre cucini. Nella sezione Ricette c'è tutto il ricettario, con la ricerca. Se mangi qualcosa di diverso dal menu, in Oggi tocca "Hai mangiato qualcosa di diverso?" (o apri il pasto): scrivilo o dettalo come viene, Claude stima le calorie, ti dice come può pesare sulla bilancia e, se serve, propone come sistemare i pasti successivi con il tasto "Applica al menu". Puoi modificare le ricette o aggiungerne di nuove: nella casella "Parole che la collegano al menu" scrivi le parole del piatto, così si apre da sola dal menu. Per modificare il pasto, aprilo e tocca "Modifica il pasto".</p>
       <h2>Chiedi a Claude</h2>
       <p>Chiedi se puoi sostituire un alimento, quanto mangiarne, cosa portare al lavoro, cosa mangiare dopo lo sport o se un prodotto va bene. Claude vede il menu di famiglia, il tuo profilo, le preferenze, gli ultimi pesi e le attività. Parla solo di alimentazione, spesa e benessere: per il resto risponde che non è la persona giusta. Non sostituisce il medico.</p>
-      <p><b>A voce:</b> tocca il microfono accanto alla casella e parla. Quando smetti, la domanda parte da sola e la risposta viene letta ad alta voce. Su ogni risposta c'è anche il tasto "Ascolta". La voce è gratis: la fa il telefono. La prima volta il browser chiede il permesso di usare il microfono.</p>
+      <p><b>A voce:</b> su iPhone tocca il microfono della tastiera (in basso, accanto alla barra spaziatrice) e detta; sugli altri telefoni tocca il microfono accanto alla casella e parla. Con "Leggimi le risposte ad alta voce" il telefono legge ogni risposta. Quando smetti, la domanda parte da sola e la risposta viene letta ad alta voce. Su ogni risposta c'è anche il tasto "Ascolta". La voce è gratis: la fa il telefono. La prima volta il browser chiede il permesso di usare il microfono.</p>
       <h3>Attivare Chiedi a Claude</h3>
       <p>È l'unica parte a pagamento. Serve una chiave API Anthropic:</p>
       <ol><li>Su console.anthropic.com crea l'account, aggiungi un po' di credito e crea una chiave API.</li>
