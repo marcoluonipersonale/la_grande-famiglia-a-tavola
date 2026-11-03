@@ -21,7 +21,8 @@ Una persona ti dice che a un pasto ha mangiato qualcosa di diverso dal menu. Tu:
 4. solo se la differenza è grande (oltre ~300 kcal in più, oppure mancano molte proteine o verdure) proponi al massimo 2 aggiustamenti a pasti FUTURI del menu che ti do: stesso piatto con porzione diversa o una piccola aggiunta/riduzione, mai digiuni o pasti saltati, mai sotto ~1.500 kcal al giorno. Se non serve, nessun aggiustamento.
 Se emergono segni di rapporto difficile con il cibo, niente numeri: solo gentilezza e il consiglio di parlarne con il medico.
 
-Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, con queste chiavi:
+Sii breve: "riassunto" una frase, "bilancia" al massimo 2 frasi, "commento" al massimo 3 frasi.
+Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo e senza blocchi di codice, con queste chiavi:
 {"riassunto": "cosa ha mangiato, in poche parole",
  "kcal_previste": numero o null,
  "kcal_mangiate": numero,
@@ -29,6 +30,16 @@ Rispondi SOLO con un oggetto JSON valido, senza testo prima o dopo, con queste c
  "bilancia": "effetto probabile sulla pesata di domani",
  "commento": "2-3 frasi",
  "aggiustamenti": [{"giorno": "AAAA-MM-GG", "momento": "uno di: colazione, spuntino_mattina, pranzo, spuntino_pomeriggio, cena, dopo_cena", "testo_nuovo": "il testo completo del pasto aggiornato", "perche": "motivo breve"}]}`;
+
+// Legge la risposta di Claude anche se il JSON è incompleto o circondato da testo.
+function leggiAnalisi(grezzo: string): any {
+  try { const a = JSON.parse(grezzo.slice(grezzo.indexOf('{'), grezzo.lastIndexOf('}') + 1)); if (a && typeof a === 'object') return a; } catch { /* sotto il recupero */ }
+  const testo = (k: string) => { const m = grezzo.match(new RegExp(`"${k}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)`)); return m ? m[1].replace(/\\"/g, '"').replace(/\\n/g, ' ').trim() : undefined; };
+  const numero = (k: string) => { const m = grezzo.match(new RegExp(`"${k}"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)`)); return m ? Number(m[1]) : null; };
+  const a: any = { riassunto: testo('riassunto'), kcal_previste: numero('kcal_previste'), kcal_mangiate: numero('kcal_mangiate'), differenza: numero('differenza'), bilancia: testo('bilancia'), commento: testo('commento') };
+  if (!a.riassunto && !a.commento && !a.bilancia) a.commento = grezzo.replace(/[{}"\[\]]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 600);
+  return a;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -82,13 +93,12 @@ Deno.serve(async (req) => {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': chiave, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-5-5', max_tokens: 900, system: `${REGOLE}\n\nCONTESTO:\n${contesto}`, messages: [{ role: 'user', content: `Ecco cosa ho mangiato invece: ${testo}` }] }),
+    body: JSON.stringify({ model: Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-5-5', max_tokens: 1600, system: `${REGOLE}\n\nCONTESTO:\n${contesto}`, messages: [{ role: 'user', content: `Ecco cosa ho mangiato invece: ${testo}` }] }),
   });
   if (!r.ok) { console.error(await r.text()); return json({ errore: 'Claude non risponde in questo momento, riprova tra poco.' }, 502); }
   const out = await r.json();
   const grezzo = (out.content || []).filter((c: any) => c.type === 'text').map((c: any) => c.text).join('\n');
-  let analisi: any = null;
-  try { analisi = JSON.parse(grezzo.slice(grezzo.indexOf('{'), grezzo.lastIndexOf('}') + 1)); } catch { analisi = { commento: grezzo.trim().slice(0, 1200) }; }
+  const analisi: any = leggiAnalisi(grezzo);
   // tieni solo aggiustamenti su pasti futuri che esistono davvero
   const validi = new Set(dopo.map((p) => `${p.giorno}|${p.momento}`));
   analisi.aggiustamenti = (Array.isArray(analisi.aggiustamenti) ? analisi.aggiustamenti : [])
