@@ -10,7 +10,7 @@ const app = document.getElementById('app');
 const S = {
   sessione: null, me: null, famiglia: null, membri: [],
   lunedi: null, spuntini: true, giorniSpesa: null, spuntatiOra: null,
-  chatNonAttiva: false, ricette: null, prima: '#/oggi', varMappa: new Map(),
+  chatNonAttiva: false, ricette: null, prima: '#/oggi', varMappa: new Map(), ingrMappa: new Map(),
 };
 
 // ---------------------------------------------------------------- utilità
@@ -226,6 +226,7 @@ async function vistaOggi() {
     sb.from('tav_pesate').select('*').eq('user_id', S.me.user_id).order('giorno', { ascending: false }).limit(2),
   ]);
   const diOggi = (pasti || []).filter((p) => p.giorno === g).sort((a, b) => ORDINE_MOMENTO[a.momento] - ORDINE_MOMENTO[b.momento]);
+  await caricaIngredienti(diOggi);
   const diDomani = (pasti || []).filter((p) => p.giorno === domani);
   const cena = diOggi.find((p) => p.momento === 'cena');
   const [piatto, ...resto] = cena ? cena.testo.split(/,\s*poi\s+|;\s*/i) : [];
@@ -285,6 +286,18 @@ function variazione(d, dopo) {
   return `<p class="variazione ${d < 0 ? 'giu' : 'su'}">${d < 0 ? '−' : '+'}${num(Math.abs(d))} kg ${dopo}</p>`;
 }
 
+// le dosi di ogni pasto, sempre visibili sotto il testo
+async function caricaIngredienti(pasti) {
+  const ids = (pasti || []).map((p) => p.id);
+  S.ingrMappa = new Map();
+  if (!ids.length) return;
+  const { data } = await sb.from('tav_ingredienti').select('pasto_id, nome, quantita, ordine').in('pasto_id', ids).order('ordine');
+  (data || []).forEach((i) => { if (!S.ingrMappa.has(i.pasto_id)) S.ingrMappa.set(i.pasto_id, []); S.ingrMappa.get(i.pasto_id).push(i); });
+}
+function rigaDosi(id) {
+  const l = (S.ingrMappa.get(id) || []).filter((i) => i.quantita);
+  return l.length ? `<span class="dosi">${l.map((i) => `<span>${esc(i.nome)} <b>${esc(i.quantita)}</b></span>`).join('')}</span>` : '';
+}
 function tabellaGiorno(pasti, conSpuntini = S.spuntini, giorno = null) {
   const righe = pasti.filter((p) => conSpuntini || !SPUNTINI.has(p.momento))
     .sort((a, b) => ORDINE_MOMENTO[a.momento] - ORDINE_MOMENTO[b.momento]);
@@ -292,7 +305,7 @@ function tabellaGiorno(pasti, conSpuntini = S.spuntini, giorno = null) {
   return `<table class="tavola"><tbody>${righe.map((p) => `
     <tr class="${p.fatto ? 'fatto ' : ''}${SPUNTINI.has(p.momento) ? 'spuntino ' : ''}${p.momento === 'cena' ? 'cena' : ''}">
       <th scope="row">${NOME_MOMENTO[p.momento]}</th>
-      <td class="testo-pasto" data-modifica="${p.id}" tabindex="0" role="button" aria-label="Apri ${NOME_MOMENTO[p.momento]}: come si prepara">${esc(p.testo)}${p.note ? `<br><small class="tenue">${esc(p.note)}</small>` : ''}${S.varMappa.get(`${p.giorno}|${p.momento}`) ? `<span class="variato">Hai mangiato invece: ${esc(S.varMappa.get(`${p.giorno}|${p.momento}`).map((v) => v.testo).join('; '))}</span>` : ricettePer(p.testo).length ? '<span class="ha-ricetta">Come si prepara ›</span>' : ''}</td>
+      <td class="testo-pasto" data-modifica="${p.id}" tabindex="0" role="button" aria-label="Apri ${NOME_MOMENTO[p.momento]}: come si prepara">${esc(p.testo)}${rigaDosi(p.id)}${p.note ? `<br><small class="tenue">${esc(p.note)}</small>` : ''}${S.varMappa.get(`${p.giorno}|${p.momento}`) ? `<span class="variato">Hai mangiato invece: ${esc(S.varMappa.get(`${p.giorno}|${p.momento}`).map((v) => v.testo).join('; '))}</span>` : ricettePer(p.testo).length ? '<span class="ha-ricetta">Come si prepara ›</span>' : ''}</td>
       <td class="cella-spunta"><input type="checkbox" class="spunta" data-spunta="${p.id}" ${p.fatto ? 'checked' : ''} aria-label="Fatto: ${NOME_MOMENTO[p.momento]}"></td>
     </tr>`).join('')}</tbody></table>`;
 }
@@ -363,6 +376,7 @@ async function vistaSettimana() {
   const lun = S.lunedi, dom = piuGiorni(lun, 6);
   const { data: pasti, error } = await sb.from('tav_pasti').select('*').gte('giorno', lun).lte('giorno', dom);
   if (error) return errore(error);
+  await caricaIngredienti(pasti);
   const titoloSett = lun === lunediDi(oggi()) ? 'Questa settimana' : lun === piuGiorni(lunediDi(oggi()), 7) ? 'Settimana prossima' : lun === piuGiorni(lunediDi(oggi()), -7) ? 'Settimana scorsa' : `Settimana del ${daYmd(lun).getDate()} ${MESI[daYmd(lun).getMonth()]}`;
   const giorni = [...Array(7)].map((_, i) => piuGiorni(lun, i));
   const vuota = !pasti?.length;
