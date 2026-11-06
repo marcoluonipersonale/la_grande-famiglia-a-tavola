@@ -160,6 +160,7 @@ function vistaAccesso(modo = 'entra', messaggio = '') {
   app.innerHTML = `<main class="accesso">
     <div class="marchio"><img src="icons/logo.svg" alt="" width="104" height="104">
       <p class="marchio-nome">La Grande Famiglia<span>a Tavola</span></p>
+      <p class="by-ml">by ${SIGILLO} Marco Luoni</p>
       <p class="sotto">Il menu di casa, la spesa e i progressi di tutti, nello stesso posto.</p></div>
     <form id="f-accesso" novalidate>
       ${registrati ? `<label class="campo">Il tuo nome<input type="text" name="nome" autocomplete="given-name" required maxlength="40"></label>` : ''}

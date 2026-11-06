@@ -211,9 +211,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--basilico); outli
 
 /* ---------- firma ---------- */
 .firma { display: flex; align-items: center; gap: 12px; justify-content: center; color: var(--inchiostro-2); font-size: 14px; margin-top: 34px; }
-.firma .sigillo { width: 34px; height: 34px; color: var(--basilico-scuro); }
+.firma .sigillo { width: 44px; height: 44px; flex: none; color: var(--basilico-scuro); }
 .firma .sigillo .punto { fill: var(--zucca); }
 .firma b { color: var(--inchiostro); }
+.by-ml { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 2px 0 0; font: 600 13px var(--display, inherit); letter-spacing: .06em; color: var(--inchiostro-2); }
+.by-ml .sigillo { width: 30px; height: 30px; color: var(--basilico-scuro); }
+.by-ml .sigillo .punto { fill: var(--zucca); }
 
 /* ---------- finestra ---------- */
 dialog { border: 0; border-radius: 24px; padding: 0; width: min(520px, calc(100vw - 24px)); background: var(--foglio); color: var(--inchiostro); box-shadow: 0 20px 50px rgba(23,51,42,.25); }
