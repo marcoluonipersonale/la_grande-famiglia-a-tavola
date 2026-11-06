@@ -1,6 +1,6 @@
 // Service worker: il sito si apre anche senza rete (i dati arrivano appena torna).
-const VERSIONE = 'tavola-v12';
-const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/config.js', 'manifest.webmanifest', 'icons/logo.svg', 'icons/icon-192.png'];
+const VERSIONE = 'tavola-v13';
+const SHELL = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/config.js', 'js/sigillo-anim.js', 'manifest.webmanifest', 'icons/logo.svg', 'icons/icon-192.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSIONE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
